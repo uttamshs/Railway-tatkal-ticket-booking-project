@@ -25,3 +25,241 @@ button,input,select,textarea{font:inherit}button{cursor:pointer}button:disabled{
 @media(max-width:700px){.exploration-finish{flex-direction:column;align-items:stretch}.comparison-table{grid-template-columns:1fr}}
 
 .group-planner{margin-bottom:20px;padding:20px;border:1px solid var(--accent);border-radius:18px;background:var(--panel2);display:grid;gap:14px}.group-planner h3{margin:2px 0 4px;font-size:1.25rem}.group-chips{display:flex;flex-wrap:wrap;gap:8px}.group-chip{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:999px;padding:8px 12px;cursor:pointer}.group-chip.active{background:var(--panel2);color:var(--accent);border-color:var(--accent)}.group-planner label{display:grid;gap:7px;font-size:.82rem;color:var(--muted)}.group-planner select{max-width:330px}.planner-insight{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:12px;background:var(--panel);border: 1px solid var(--line);}.planner-insight span{color:var(--text);font-size:.88rem}.data-provenance{font-size:.78rem;color:var(--muted)}
+
+/* ========================================================================== */
+/* 2-SECOND INTRO SPLASH SCREEN & REALISTIC SIMULATED PAYMENT HANDOFF STYLES */
+/* ========================================================================== */
+.intro-splash-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: introFadeIn 0.35s ease-out;
+}
+@keyframes introFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.intro-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.intro-logo-glow {
+  width: 90px;
+  height: 90px;
+  border-radius: 24px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 35px rgba(30, 64, 175, 0.18);
+  animation: logoPulse 2s infinite ease-in-out;
+  margin-bottom: 18px;
+}
+@keyframes logoPulse {
+  0% { transform: scale(0.96); box-shadow: 0 0 20px rgba(30, 64, 175, 0.12); }
+  50% { transform: scale(1.04); box-shadow: 0 0 45px rgba(30, 64, 175, 0.28); }
+  100% { transform: scale(0.96); box-shadow: 0 0 20px rgba(30, 64, 175, 0.12); }
+}
+.intro-title {
+  font-size: 32px;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  color: var(--text);
+  margin: 0 0 4px;
+}
+.intro-subtitle {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 24px;
+}
+.intro-loader-bar {
+  width: 140px;
+  height: 4px;
+  background: var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.intro-loader-progress {
+  height: 100%;
+  background: var(--accent);
+  width: 0%;
+  animation: introFill 2s cubic-bezier(0.1, 0.8, 0.2, 1) forwards;
+}
+@keyframes introFill {
+  0% { width: 0%; }
+  100% { width: 100%; }
+}
+.intro-skip {
+  font-size: 11px;
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+/* Simulated Payment Handoff UI */
+.sim-notice-banner {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin: 20px 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.sim-notice-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.sim-notice-text strong {
+  display: block;
+  font-size: 13.5px;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+.sim-notice-text p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.payment-methods-grid {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 16px;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  border-radius: 14px;
+  padding: 16px;
+  margin-top: 16px;
+}
+@media(max-width: 768px) {
+  .payment-methods-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.payment-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.payment-tab-btn {
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: all 0.2s;
+}
+.payment-tab-btn:hover {
+  background: var(--panel);
+  color: var(--text);
+}
+.payment-tab-btn.active {
+  background: var(--panel);
+  border-color: var(--accent);
+  color: var(--text);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.payment-pane {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 20px;
+}
+.upi-app-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 16px;
+}
+.upi-app-chip {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.upi-app-chip:hover, .upi-app-chip.selected {
+  border-color: var(--accent);
+  background: rgba(30, 64, 175, 0.08);
+  color: var(--accent);
+}
+.bank-tiles-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 12px 0 16px;
+}
+.bank-tile {
+  padding: 12px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text);
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.bank-tile:hover, .bank-tile.selected {
+  border-color: var(--accent);
+  background: rgba(30, 64, 175, 0.08);
+  color: var(--accent);
+}
+.sim-confirmation-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(8px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.sim-ticket-card {
+  width: min(540px, 95vw);
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 20px;
+  padding: 28px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  animation: ticketPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+@keyframes ticketPop {
+  from { transform: scale(0.92); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
