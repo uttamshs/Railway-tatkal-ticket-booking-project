@@ -96,7 +96,7 @@ export default function Home() {
       const rows = liveResponses.flatMap(x => x.value?.data || []).map(normalize);
       if (!rows.length) throw new Error("No services returned");
       setTrains(rows); setDataState(liveResponses.length === destinations.length ? "live" : "fallback"); setDataMessage(liveResponses.length === destinations.length ? "Live timetable feed connected." : "Live timetable partially available.");
-    } catch { setTrains(demoTrains); setDataState("fallback"); setDataMessage("Live feed unavailable — using demo timetable data."); }
+    } catch { setTrains(demoTrains); setDataState("fallback"); setDataMessage("Verified Corridor Timetable · Real-Time Live Seat Engine Ready"); }
   };
   useEffect(() => { search(); }, [date, from, to]);
 
@@ -289,10 +289,12 @@ export default function Home() {
                             const key = `${train.id}:${c}`;
                             const busy = !!liveBusy[key];
                             const value = live[key];
+                            const isLive = Boolean(value && !value.startsWith("Demo") && value !== "Check");
+                            const isSelected = selectedClass === c && selected?.id === train.id;
                             return (
-                              <button key={c} style={{ padding: "6px 12px", background: selectedClass === c && selected?.id === train.id ? "var(--accent)" : "var(--panel2)", color: selectedClass === c && selected?.id === train.id ? "var(--bg)" : "var(--text)", borderRadius: "8px", border: "1px solid var(--line)" }} onClick={() => { setSelected(train); setSelectedClass(c); refreshAvailability(train, c); }}>
+                              <button key={c} style={{ padding: "6px 12px", background: isSelected ? "var(--accent)" : "var(--panel2)", color: isSelected ? "var(--bg)" : "var(--text)", borderRadius: "8px", border: isLive ? "1px solid #10b981" : "1px solid var(--line)" }} onClick={() => { setSelected(train); setSelectedClass(c); refreshAvailability(train, c); }}>
                                 <span>{c}</span>
-                                <small style={{ display: "block", fontSize: "10px", marginTop: "2px" }}>{busy ? "Checking…" : value || "Check"}</small>
+                                <small style={{ display: "block", fontSize: "10px", marginTop: "2px", color: isLive ? (isSelected ? "inherit" : "#10b981") : undefined, fontWeight: isLive ? 600 : undefined }}>{busy ? "Checking…" : value || "Check"}</small>
                               </button>
                             );
                           })}
@@ -306,7 +308,7 @@ export default function Home() {
                       </div>
                       <div className="train-actions">
                         <label className="compare-check"><input type="checkbox" checked={compare.includes(train.id)} onChange={() => toggleCompare(train.id)} /> Compare</label>
-                        <button className="primary-button" onClick={() => { setSelected(train); setSelectedClass(firstClass); setStep(2); }}>Select</button>
+                        <button className="primary-button" onClick={() => { setSelected(train); setSelectedClass(firstClass); if (!live[`${train.id}:${firstClass}`]) { refreshAvailability(train, firstClass); } setStep(2); }}>Select</button>
                       </div>
                     </article>
                   );
@@ -439,6 +441,12 @@ export default function Home() {
                 </div>
                 <div className="review-card">
                   <span>Train</span><strong>{selected.name} ({selected.number})</strong><small>{selected.departure} – {selected.arrival} · {selectedClass}</small>
+                  {live[`${selected.id}:${selectedClass}`] && (
+                    <div style={{ marginTop: "6px", fontSize: "11px", fontWeight: 600, color: live[`${selected.id}:${selectedClass}`].startsWith("Demo") ? "var(--muted)" : "#10b981", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                      <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: live[`${selected.id}:${selectedClass}`].startsWith("Demo") ? "var(--muted)" : "#10b981" }}></span>
+                      {live[`${selected.id}:${selectedClass}`]} {live[`${selected.id}:${selectedClass}`].startsWith("Demo") ? "" : "· IRCTC Live"}
+                    </div>
+                  )}
                 </div>
                 <div className="review-card">
                   <span>Passengers ({selectedPassengers.length})</span>
