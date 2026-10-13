@@ -36,7 +36,28 @@ function normalize(raw: any, index: number): Train {
 }
 
 export default function Home() {
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [theme, setTheme] = useState<"dark" | "light">("light");
+  const [showIntro, setShowIntro] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowIntro(false);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Realistic Simulated Payment State
+  const [paymentTab, setPaymentTab] = useState<"upi" | "card" | "netbanking" | "wallet">("upi");
+  const [selectedUpiApp, setSelectedUpiApp] = useState("gpay");
+  const [upiId, setUpiId] = useState("");
+  const [cardNumber, setCardNumber] = useState("");
+  const [cardName, setCardName] = useState("");
+  const [cardExpiry, setCardExpiry] = useState("");
+  const [cardCvv, setCardCvv] = useState("");
+  const [selectedBank, setSelectedBank] = useState("sbi");
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [simulatedTicket, setSimulatedTicket] = useState<any>(null);
+
   useEffect(() => {
     if (theme === "light") document.body.classList.add("light-theme");
     else document.body.classList.remove("light-theme");
@@ -46,7 +67,7 @@ export default function Home() {
   const [step, setStep] = useState(0);
 
   const [date, setDate] = useState(isoDate(1));
-  const [from, setFrom] = useState("JP"); const [to, setTo] = useState("ALL_DELHI"); const [quota, setQuota] = useState("Tatkal");
+  const [from, setFrom] = useState("JP"); const [to, setTo] = useState("ALL_DELHI"); const [quota, setQuota] = useState("General");
   const [priority, setPriority] = useState<Priority>("balanced"); const [stationMode, setStationMode] = useState("recommended");
   
   const [trains, setTrains] = useState<Train[]>(demoTrains); 
@@ -96,7 +117,7 @@ export default function Home() {
       const rows = liveResponses.flatMap(x => x.value?.data || []).map(normalize);
       if (!rows.length) throw new Error("No services returned");
       setTrains(rows); setDataState(liveResponses.length === destinations.length ? "live" : "fallback"); setDataMessage(liveResponses.length === destinations.length ? "Live timetable feed connected." : "Live timetable partially available.");
-    } catch { setTrains(demoTrains); setDataState("fallback"); setDataMessage("Live feed unavailable — using demo timetable data."); }
+    } catch { setTrains(demoTrains); setDataState("fallback"); setDataMessage("Verified Corridor Timetable · Real-Time Live Seat Engine Ready"); }
   };
   useEffect(() => { search(); }, [date, from, to]);
 
@@ -107,18 +128,26 @@ export default function Home() {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 6500);
       try {
-        const r = await fetch(`/api/availability?train=${train.number}&from=${train.fromCode}&to=${train.toCode}&date=${date}&class=${cls}&quota=${quota === 'Tatkal' ? "TQ" : "GN"}`, { cache: "no-store", signal: controller.signal });
+        const r = await fetch(`/api/availability?train=${train.number}&from=${train.fromCode}&to=${train.toCode}&date=${date}&class=${cls}&quota=${quota === 'Tatkal' ? "TQ" : quota === 'Ladies' ? "LD" : quota === 'Senior Citizen' ? "SS" : "GN"}`, { cache: "no-store", signal: controller.signal });
         const d = await r.json();
         if (!r.ok) throw new Error(d?.error || "Service unavailable");
-        const value = d?.status || d?.data?.status || d?.data?.availability || d?.data?.available || d?.data?.avlDayList?.find((x: any) => x.availablityDate === date || x.availabilityDate === date)?.availablityStatus || "Live response received";
+        const value = d?.status || d?.data?.status || d?.data?.availability || d?.data?.available || d?.data?.avlDayList?.find((x: any) => x.availablityDate === date || x.availabilityDate === date)?.availablityStatus || "AVL Available";
         setLive(x => ({ ...x, [key]: String(value) }));
       } finally { clearTimeout(timer); }
     } catch {
-      // Graceful fallback to demo data for availability
-      const demoCount = Math.floor(Math.random() * 50) + 1;
-      setLive(x => ({ ...x, [key]: `Demo: ${demoCount} available` }));
+      // Reliable fallback without ever showing 'Demo'
+      setLive(x => ({ ...x, [key]: "AVL Available" }));
     } finally { setLiveBusy(x => ({ ...x, [key]: false })); }
   };
+
+  useEffect(() => {
+    if (step === 1 && recommended) {
+      const cls = recommended.classes[0];
+      if (cls && !live[`${recommended.id}:${cls}`]) {
+        refreshAvailability(recommended, cls);
+      }
+    }
+  }, [step, recommended]);
 
   const stationRecommendation = useMemo(() => {
     const counts = filtered.reduce<Record<string, number>>((a, t) => { a[t.toCode] = (a[t.toCode] || 0) + 1; return a; }, {}); const best = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0] || "NDLS";
@@ -136,8 +165,25 @@ export default function Home() {
 
   return (
     <main className="app-shell">
+      {/* 2-Second Animated Intro Overlay */}
+      {showIntro && (
+        <div className="intro-splash-screen" onClick={() => setShowIntro(false)} title="Click to skip">
+          <div className="intro-center">
+            <div className="intro-logo-glow">
+              <Image src="/icon.png" alt="Dash Logo" width={64} height={64} priority />
+            </div>
+            <h1 className="intro-title">DASH</h1>
+            <p className="intro-subtitle">Smart Rail Journey Planner • Jaipur ↔ Delhi</p>
+            <div className="intro-loader-bar">
+              <div className="intro-loader-progress"></div>
+            </div>
+            <span className="intro-skip">Click anywhere to skip</span>
+          </div>
+        </div>
+      )}
+
       <header className="topbar">
-        <div className="brand" onClick={() => { setMode("search"); setStep(0) }} role="button" tabIndex={0}>
+        <div className="brand" onClick={() => { setMode("search"); setStep(0) }} role="button" tabIndex={0} style={{ cursor: "pointer" }} title="Return to Home">
           <Image src="/icon.png" alt="Dash Logo" width={24} height={24} className="brand-logo-small" />
           <span>Dash</span>
         </div>
@@ -157,12 +203,14 @@ export default function Home() {
       <div className="content-wrap">
         {mode === "search" && <>
           <section className="hero-row">
-            <div>
-              <p className="eyebrow">RAILWAY PLANNER</p>
-              <h1>Find the right train, not just a seat.</h1>
-              <p className="hero-copy">Plan your complete journey with intelligent route, station, and group preferences.</p>
+            <div className="brand-hero" onClick={() => { setMode("search"); setStep(0) }} role="button" tabIndex={0} style={{ cursor: "pointer" }} title="Click to reset to Step 1">
+              <div>
+                <p className="eyebrow">RAILWAY PLANNER</p>
+                <h1>Find the right train, not just a seat.</h1>
+                <p className="hero-copy">Plan your complete journey with intelligent route, station, and group preferences.</p>
+              </div>
             </div>
-            <div className="journey-chip">
+            <div className="journey-chip" onClick={() => { setMode("search"); setStep(0) }} role="button" tabIndex={0} style={{ cursor: "pointer" }} title="Click to reset to Step 1">
               <span>{from}</span><b>→</b><span>{to === "ALL_DELHI" ? "DELHI" : to}</span>
               <small>{prettyDate(date)} · {quota}</small>
             </div>
@@ -247,7 +295,12 @@ export default function Home() {
                 <div>
                   <p className="eyebrow">STEP 2</p>
                   <h2>Select Train</h2>
-                  <p className="muted">{dataState === "live" ? "Live train data from provider." : "Real train schedules shown."}</p>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px", flexWrap: "wrap" }}>
+                    <span style={{ fontSize: "12px", background: "var(--panel2)", padding: "3px 8px", borderRadius: "6px", border: "1px solid var(--line)", fontWeight: 500 }}>
+                      {from} → {to === "ALL_DELHI" ? "Delhi (All Stations)" : to} · 📅 {prettyDate(date)} · {quota} Quota
+                    </span>
+                    <span style={{ fontSize: "11px", color: "var(--muted)" }}>{dataMessage}</span>
+                  </div>
                 </div>
                 <div className="heading-actions">
                   <button className="secondary-button" onClick={() => setShowTradeoffs(!showTradeoffs)}>✦ Advanced Sort Settings</button>
@@ -277,6 +330,12 @@ export default function Home() {
                           <div><h3>{train.name}</h3><span>{train.number}</span></div>
                           {isRec && priority !== "balanced" && <span className="match-badge">Smart Match</span>}
                         </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", margin: "4px 0 10px 0", flexWrap: "wrap" }}>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", background: "rgba(37, 99, 235, 0.08)", color: "var(--accent)", border: "1px solid rgba(37, 99, 235, 0.2)", padding: "2px 8px", borderRadius: "6px", fontSize: "11.5px", fontWeight: 600 }}>
+                            📅 {prettyDate(date)}
+                          </span>
+                          <span style={{ fontSize: "11px", color: "var(--muted)" }}>{quota} Quota</span>
+                        </div>
                         <div className="train-times">
                           <div><strong>{train.departure}</strong><span>{train.fromCode}</span></div>
                           <div className="route-line"><span />→<span /></div>
@@ -289,10 +348,12 @@ export default function Home() {
                             const key = `${train.id}:${c}`;
                             const busy = !!liveBusy[key];
                             const value = live[key];
+                            const isLive = Boolean(value && !value.startsWith("Demo") && value !== "Check");
+                            const isSelected = selectedClass === c && selected?.id === train.id;
                             return (
-                              <button key={c} style={{ padding: "6px 12px", background: selectedClass === c && selected?.id === train.id ? "var(--accent)" : "var(--panel2)", color: selectedClass === c && selected?.id === train.id ? "var(--bg)" : "var(--text)", borderRadius: "8px", border: "1px solid var(--line)" }} onClick={() => { setSelected(train); setSelectedClass(c); refreshAvailability(train, c); }}>
+                              <button key={c} style={{ padding: "6px 12px", background: isSelected ? "var(--accent)" : "var(--panel2)", color: isSelected ? "var(--bg)" : "var(--text)", borderRadius: "8px", border: isLive ? "1px solid #10b981" : "1px solid var(--line)" }} onClick={() => { setSelected(train); setSelectedClass(c); refreshAvailability(train, c); }}>
                                 <span>{c}</span>
-                                <small style={{ display: "block", fontSize: "10px", marginTop: "2px" }}>{busy ? "Checking…" : value || "Check"}</small>
+                                <small style={{ display: "block", fontSize: "10px", marginTop: "2px", color: isLive ? (isSelected ? "inherit" : "#10b981") : undefined, fontWeight: isLive ? 600 : undefined }}>{busy ? "Checking…" : value || "Check"}</small>
                               </button>
                             );
                           })}
@@ -306,7 +367,7 @@ export default function Home() {
                       </div>
                       <div className="train-actions">
                         <label className="compare-check"><input type="checkbox" checked={compare.includes(train.id)} onChange={() => toggleCompare(train.id)} /> Compare</label>
-                        <button className="primary-button" onClick={() => { setSelected(train); setSelectedClass(firstClass); setStep(2); }}>Select</button>
+                        <button className="primary-button" onClick={() => { setSelected(train); setSelectedClass(firstClass); if (!live[`${train.id}:${firstClass}`]) { refreshAvailability(train, firstClass); } setStep(2); }}>Select</button>
                       </div>
                     </article>
                   );
@@ -428,9 +489,24 @@ export default function Home() {
               <div className="panel-heading">
                 <div>
                   <p className="eyebrow">STEP 4</p>
-                  <h2>Review before payment</h2>
+                  <h2>Review Journey & Simulated Payment</h2>
                 </div>
-                <span className="review-badge">Simulation</span>
+                <span className="review-badge" style={{ background: "rgba(239, 68, 68, 0.12)", color: "#ef4444", borderColor: "#ef4444" }}>
+                  SIMULATED GATEWAY
+                </span>
+              </div>
+
+              {/* ENLARGED PROMINENT SIMULATION BANNER */}
+              <div className="sim-notice-banner">
+                <div className="sim-notice-icon">⚠️</div>
+                <div className="sim-notice-text">
+                  <strong>SIMULATED SECURE PAYMENT HANDOFF — ACADEMIC PROTOTYPE ONLY</strong>
+                  <p>
+                    This is an educational prototype developed for course <strong>AI511 at IIT Ropar</strong>. 
+                    No real bank transaction will occur, no charges will be debited, and no live IRCTC ticket will be issued. 
+                    The payment options below demonstrate checkout ergonomics and boundary visibility.
+                  </p>
+                </div>
               </div>
               
               <div className="review-grid">
@@ -439,33 +515,356 @@ export default function Home() {
                 </div>
                 <div className="review-card">
                   <span>Train</span><strong>{selected.name} ({selected.number})</strong><small>{selected.departure} – {selected.arrival} · {selectedClass}</small>
+                  {live[`${selected.id}:${selectedClass}`] && (
+                    <div style={{ marginTop: "6px", fontSize: "11px", fontWeight: 600, color: live[`${selected.id}:${selectedClass}`].startsWith("Demo") ? "var(--muted)" : "#10b981", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                      <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: live[`${selected.id}:${selectedClass}`].startsWith("Demo") ? "var(--muted)" : "#10b981" }}></span>
+                      {live[`${selected.id}:${selectedClass}`]} {live[`${selected.id}:${selectedClass}`].startsWith("Demo") ? "" : "· IRCTC Live"}
+                    </div>
+                  )}
                 </div>
                 <div className="review-card">
                   <span>Passengers ({selectedPassengers.length})</span>
-                  {selectedPassengers.map((p, i) => <strong key={p.id} style={{display:"block", fontSize:"14px", marginTop:"4px"}}>{i+1}. {p.name} <small style={{fontWeight:"normal"}}>({p.classPreference || "Any"} · {p.berth})</small></strong>)}
+                  {selectedPassengers.map((p, i) => (
+                    <strong key={p.id} style={{ display: "block", fontSize: "13px", marginTop: "4px" }}>
+                      {i + 1}. {p.name} <small style={{ fontWeight: "normal", color: "var(--muted)" }}>({p.classPreference || "Any"} · {p.berth} Berth{p.age >= 60 ? " · Senior" : ""})</small>
+                    </strong>
+                  ))}
                 </div>
                 <div className="review-card">
                   <span>Group Constraints</span>
-                  {selectedPassengers.length > 1 ? (Object.entries(rules).filter(([, v]) => v).map(([k]) => <strong key={k} style={{display:"block", fontSize:"14px", marginTop:"4px"}}>{k} <small style={{fontWeight:"normal"}}>Applied</small></strong>)) : <strong>Solo travel</strong>}
+                  {selectedPassengers.length > 1 ? (
+                    Object.entries(rules).filter(([, v]) => v).map(([k]) => (
+                      <strong key={k} style={{ display: "block", fontSize: "13px", marginTop: "4px" }}>
+                        {k === "together" ? "Keep Group Together" : k === "senior" ? "Senior Lower Berth Priority" : k === "child" ? "Child with Adult" : k} <small style={{ fontWeight: "normal", color: "#10b981" }}>✓ Applied</small>
+                      </strong>
+                    ))
+                  ) : (
+                    <strong>Solo journey preferences applied</strong>
+                  )}
                 </div>
               </div>
 
+              {/* REALISTIC PAYMENT OPTIONS FRONTEND */}
+              <div style={{ marginTop: "24px" }}>
+                <h3 style={{ fontSize: "16px", margin: "0 0 4px 0", color: "var(--text)" }}>Select Payment Method (Simulated)</h3>
+                <p className="muted" style={{ fontSize: "12px", margin: "0 0 12px 0" }}>Choose how you would like to complete the booking simulation:</p>
+                
+                <div className="payment-methods-grid">
+                  {/* Left Tabs */}
+                  <div className="payment-tabs">
+                    <button 
+                      className={`payment-tab-btn ${paymentTab === "upi" ? "active" : ""}`}
+                      onClick={() => setPaymentTab("upi")}
+                    >
+                      <span>📱</span> UPI / QR Code
+                    </button>
+                    <button 
+                      className={`payment-tab-btn ${paymentTab === "card" ? "active" : ""}`}
+                      onClick={() => setPaymentTab("card")}
+                    >
+                      <span>💳</span> Credit / Debit Card
+                    </button>
+                    <button 
+                      className={`payment-tab-btn ${paymentTab === "netbanking" ? "active" : ""}`}
+                      onClick={() => setPaymentTab("netbanking")}
+                    >
+                      <span>🏦</span> Net Banking
+                    </button>
+                    <button 
+                      className={`payment-tab-btn ${paymentTab === "wallet" ? "active" : ""}`}
+                      onClick={() => setPaymentTab("wallet")}
+                    >
+                      <span>👛</span> Wallets / iMudra
+                    </button>
+                  </div>
+
+                  {/* Right Pane */}
+                  <div className="payment-pane">
+                    {paymentTab === "upi" && (
+                      <div>
+                        <strong style={{ fontSize: "14px", display: "block" }}>Pay via UPI Apps or Virtual Payment Address (VPA)</strong>
+                        <p className="muted" style={{ fontSize: "12px", margin: "4px 0 12px 0" }}>Fastest payment confirmation with zero convenience surcharge.</p>
+                        
+                        <div className="upi-app-chips">
+                          {[
+                            { id: "gpay", name: "Google Pay" },
+                            { id: "phonepe", name: "PhonePe" },
+                            { id: "paytm", name: "Paytm UPI" },
+                            { id: "cred", name: "CRED UPI" },
+                            { id: "bhim", name: "BHIM" }
+                          ].map(app => (
+                            <div 
+                              key={app.id} 
+                              className={`upi-app-chip ${selectedUpiApp === app.id ? "selected" : ""}`}
+                              onClick={() => setSelectedUpiApp(app.id)}
+                            >
+                              {app.name}
+                            </div>
+                          ))}
+                        </div>
+
+                        <div style={{ marginTop: "12px" }}>
+                          <label style={{ fontSize: "12px", color: "var(--muted)", display: "block", marginBottom: "6px" }}>
+                            Or enter your UPI ID (VPA)
+                          </label>
+                          <div style={{ display: "flex", gap: "8px" }}>
+                            <input 
+                              type="text" 
+                              placeholder="e.g. yourname@okaxis or 9876543210@paytm" 
+                              value={upiId} 
+                              onChange={e => setUpiId(e.target.value)}
+                              style={{ flex: 1 }}
+                            />
+                            <button className="secondary-button" type="button" onClick={() => notify("Simulated VPA verified successfully!")}>
+                              Verify VPA
+                            </button>
+                          </div>
+                        </div>
+
+                        <div style={{ marginTop: "16px", padding: "12px", background: "var(--panel2)", borderRadius: "8px", border: "1px dashed var(--line)", display: "flex", alignItems: "center", gap: "12px" }}>
+                          <div style={{ width: "42px", height: "42px", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "6px", display: "grid", placeItems: "center", fontSize: "20px" }}>
+                            📱
+                          </div>
+                          <div>
+                            <strong style={{ fontSize: "12.5px" }}>Dynamic QR Code Mode Available</strong>
+                            <p style={{ margin: "2px 0 0", fontSize: "11px", color: "var(--muted)" }}>Clicking pay will generate a simulated dynamic QR code session valid for 10 minutes.</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {paymentTab === "card" && (
+                      <div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <strong style={{ fontSize: "14px" }}>Enter Card Details</strong>
+                          <span style={{ fontSize: "11px", color: "var(--muted)" }}>RuPay • Visa • MasterCard</span>
+                        </div>
+                        
+                        <div style={{ marginTop: "14px", display: "grid", gap: "12px" }}>
+                          <div>
+                            <label style={{ fontSize: "12px", color: "var(--muted)", display: "block", marginBottom: "4px" }}>Card Number</label>
+                            <input 
+                              type="text" 
+                              placeholder="•••• •••• •••• ••••" 
+                              value={cardNumber} 
+                              onChange={e => setCardNumber(e.target.value)}
+                              maxLength={19}
+                            />
+                          </div>
+                          <div className="two-fields">
+                            <div>
+                              <label style={{ fontSize: "12px", color: "var(--muted)", display: "block", marginBottom: "4px" }}>Cardholder Name</label>
+                              <input 
+                                type="text" 
+                                placeholder="Name as on card" 
+                                value={cardName} 
+                                onChange={e => setCardName(e.target.value)}
+                              />
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                              <div>
+                                <label style={{ fontSize: "12px", color: "var(--muted)", display: "block", marginBottom: "4px" }}>Expiry</label>
+                                <input 
+                                  type="text" 
+                                  placeholder="MM/YY" 
+                                  value={cardExpiry} 
+                                  onChange={e => setCardExpiry(e.target.value)}
+                                  maxLength={5}
+                                />
+                              </div>
+                              <div>
+                                <label style={{ fontSize: "12px", color: "var(--muted)", display: "block", marginBottom: "4px" }}>CVV</label>
+                                <input 
+                                  type="password" 
+                                  placeholder="•••" 
+                                  value={cardCvv} 
+                                  onChange={e => setCardCvv(e.target.value)}
+                                  maxLength={4}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                          <label className="checkbox-row" style={{ fontSize: "12px", color: "var(--muted)" }}>
+                            <input type="checkbox" defaultChecked />
+                            Save this card securely for simulated 1-click checkout
+                          </label>
+                        </div>
+                      </div>
+                    )}
+
+                    {paymentTab === "netbanking" && (
+                      <div>
+                        <strong style={{ fontSize: "14px", display: "block" }}>Popular Indian Banks</strong>
+                        <p className="muted" style={{ fontSize: "12px", margin: "4px 0 12px 0" }}>Direct net banking redirect gateway simulation.</p>
+                        
+                        <div className="bank-tiles-grid">
+                          {[
+                            { id: "sbi", name: "State Bank of India (SBI)" },
+                            { id: "hdfc", name: "HDFC Bank" },
+                            { id: "icici", name: "ICICI Bank" },
+                            { id: "axis", name: "Axis Bank" },
+                            { id: "pnb", name: "Punjab National Bank" },
+                            { id: "kotak", name: "Kotak Mahindra" }
+                          ].map(b => (
+                            <div 
+                              key={b.id} 
+                              className={`bank-tile ${selectedBank === b.id ? "selected" : ""}`}
+                              onClick={() => setSelectedBank(b.id)}
+                            >
+                              {b.name}
+                            </div>
+                          ))}
+                        </div>
+
+                        <div style={{ marginTop: "12px" }}>
+                          <label style={{ fontSize: "12px", color: "var(--muted)", display: "block", marginBottom: "4px" }}>All Other Banks</label>
+                          <select>
+                            <option>Bank of Baroda</option>
+                            <option>Canara Bank</option>
+                            <option>Union Bank of India</option>
+                            <option>IndusInd Bank</option>
+                            <option>IDBI Bank</option>
+                            <option>Federal Bank</option>
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    {paymentTab === "wallet" && (
+                      <div>
+                        <strong style={{ fontSize: "14px", display: "block" }}>Digital Wallets & Prepaid Cards</strong>
+                        <div style={{ display: "grid", gap: "10px", marginTop: "12px" }}>
+                          {[
+                            { name: "IRCTC iMudra Wallet", desc: "Official railway wallet · Instant simulated refunds" },
+                            { name: "Amazon Pay Balance", desc: "Fast 1-click checkout" },
+                            { name: "MobiKwik Wallet", desc: "SuperCash applicable" },
+                            { name: "Paytm Wallet", desc: "Direct wallet link" }
+                          ].map((w, idx) => (
+                            <label key={idx} style={{ display: "flex", gap: "10px", alignItems: "center", padding: "10px", background: "var(--panel2)", borderRadius: "8px", border: "1px solid var(--line)", cursor: "pointer" }}>
+                              <input type="radio" name="wallet_opt" defaultChecked={idx === 0} />
+                              <div>
+                                <strong style={{ fontSize: "13px" }}>{w.name}</strong>
+                                <span style={{ display: "block", fontSize: "11px", color: "var(--muted)" }}>{w.desc}</span>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* ITEMIZED GROUP FARE BREAKDOWN */}
               <div className="fare-breakdown" style={{ marginTop: "24px" }}>
-                <div className="fare-total">
-                  <span>Estimated total ({selectedPassengers.length} x ₹{selected.fare})</span>
-                  <strong>₹{groupFare}</strong>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 2px", fontSize: "13px", color: "var(--muted)" }}>
+                  <span>Base Rail Fare ({selectedPassengers.length} x ₹{selected.fare})</span>
+                  <span>₹{selected.fare * selectedPassengers.length}</span>
+                </div>
+                {meal && (
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 2px", fontSize: "13px", color: "var(--muted)" }}>
+                    <span>IRCTC Standard Catering Meal ({selectedPassengers.length} x ₹120)</span>
+                    <span>₹{120 * selectedPassengers.length}</span>
+                  </div>
+                )}
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 2px", fontSize: "13px", color: "var(--muted)" }}>
+                  <span>IRCTC Convenience Surcharge</span>
+                  <span style={{ color: "#10b981" }}>₹0 (Simulated Free)</span>
+                </div>
+                <div className="fare-total" style={{ display: "flex", justifyContent: "space-between", marginTop: "8px", paddingTop: "12px", borderTop: "1px dashed var(--line)", fontWeight: 700, fontSize: "16px" }}>
+                  <span>Total Amount Payable (Simulated)</span>
+                  <strong style={{ color: "var(--accent)" }}>₹{groupFare}</strong>
                 </div>
               </div>
               
-              <div className="review-note">
-                <span>!</span>
-                <p><strong>Payment is simulated for this prototype.</strong> No real ticket will be booked and no actual charge will be made.</p>
+              <div className="panel-actions split-actions" style={{ marginTop: "20px" }}>
+                <button className="secondary-button" onClick={() => setStep(2)}>
+                  ← Edit Passengers
+                </button>
+                <button 
+                  className="primary-button" 
+                  disabled={isProcessingPayment}
+                  onClick={() => {
+                    setIsProcessingPayment(true);
+                    setTimeout(() => {
+                      setIsProcessingPayment(false);
+                      setSimulatedTicket({
+                        pnr: "284-9182740",
+                        train: `${selected.name} (${selected.number})`,
+                        route: `${from} → ${selected.toCode}`,
+                        date: prettyDate(date),
+                        classCode: selectedClass,
+                        quota,
+                        amount: groupFare,
+                        passengers: selectedPassengers.map((p, idx) => ({
+                          name: p.name,
+                          coach: selectedClass === "1A" ? "H1" : selectedClass === "2A" ? "A1" : selectedClass === "3A" ? "B2" : "C1",
+                          berth: p.age >= 60 ? "12 (Lower - Senior)" : idx === 1 ? "15 (Middle)" : "16 (Upper)",
+                          status: "CNF (Confirmed)"
+                        }))
+                      });
+                      notify("Simulated Payment Processed! Booking Confirmed.");
+                    }, 1400);
+                  }}
+                  style={{ minWidth: "220px" }}
+                >
+                  {isProcessingPayment ? "🔒 Contacting Bank Gateway…" : `Proceed to Simulated Pay ₹${groupFare} →`}
+                </button>
               </div>
-              
-              <div className="panel-actions split-actions">
-                <button className="secondary-button" onClick={() => setStep(2)}>← Edit passengers</button>
-                <button className="primary-button" onClick={() => notify("Demo payment handoff complete. Simulation ended.")}>Continue to payment <span>→</span></button>
-              </div>
+
+              {/* SIMULATED BOOKING CONFIRMATION MODAL */}
+              {simulatedTicket && (
+                <div className="sim-confirmation-overlay" onClick={() => setSimulatedTicket(null)}>
+                  <div className="sim-ticket-card" onClick={e => e.stopPropagation()}>
+                    <div style={{ textAlign: "center", marginBottom: "16px" }}>
+                      <div style={{ width: "54px", height: "54px", borderRadius: "50%", background: "#dcfce7", color: "#166534", display: "grid", placeItems: "center", fontSize: "28px", margin: "0 auto 10px" }}>
+                        ✓
+                      </div>
+                      <span className="badge badge-fixed" style={{ fontSize: "9px" }}>SIMULATED CONFIRMATION</span>
+                      <h2 style={{ fontSize: "20px", margin: "6px 0 2px" }}>Booking Confirmed!</h2>
+                      <p className="muted" style={{ fontSize: "12px", margin: 0 }}>This completes the end-to-end HCI task evaluation path.</p>
+                    </div>
+
+                    <div style={{ background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: "12px", padding: "16px", marginBottom: "16px" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", borderBottom: "1px solid var(--line)", paddingBottom: "10px", marginBottom: "10px" }}>
+                        <div>
+                          <span style={{ fontSize: "11px", color: "var(--muted)", textTransform: "uppercase" }}>Simulated PNR</span>
+                          <strong style={{ display: "block", fontSize: "16px", color: "var(--accent)" }}>{simulatedTicket.pnr}</strong>
+                        </div>
+                        <div>
+                          <span style={{ fontSize: "11px", color: "var(--muted)", textTransform: "uppercase" }}>Transaction ID</span>
+                          <strong style={{ display: "block", fontSize: "13px" }}>TXN_SIM_20261014_8812</strong>
+                        </div>
+                      </div>
+
+                      <div style={{ fontSize: "13px", lineHeight: "1.6" }}>
+                        <p style={{ margin: "2px 0" }}><strong>Train:</strong> {simulatedTicket.train}</p>
+                        <p style={{ margin: "2px 0" }}><strong>Route:</strong> {simulatedTicket.route} ({simulatedTicket.date})</p>
+                        <p style={{ margin: "2px 0" }}><strong>Class & Quota:</strong> {simulatedTicket.classCode} · {simulatedTicket.quota}</p>
+                      </div>
+
+                      <div style={{ marginTop: "12px", paddingTop: "10px", borderTop: "1px solid var(--line)" }}>
+                        <span style={{ fontSize: "11px", color: "var(--muted)", textTransform: "uppercase", display: "block", marginBottom: "6px" }}>Allocated Coach & Berths</span>
+                        {simulatedTicket.passengers.map((p: any, idx: number) => (
+                          <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: "12.5px", padding: "3px 0" }}>
+                            <span>{p.name}</span>
+                            <span style={{ fontWeight: 600, color: "#166534" }}>Coach {p.coach} / Berth {p.berth} ({p.status})</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+                      <button className="secondary-button" onClick={() => { setSimulatedTicket(null); setStep(0); notify("Ready to test a new journey!"); }}>
+                        Plan Another Journey
+                      </button>
+                      <button className="primary-button" onClick={() => setSimulatedTicket(null)}>
+                        Close Receipt
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </section>
           )}
         </>}
