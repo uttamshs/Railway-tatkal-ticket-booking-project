@@ -6,6 +6,12 @@ import { Berth, Passenger, Priority, Train } from "../lib/types";
 import { rankTrains, tradeoffs } from "../lib/recommendation";
 import { Stepper } from "../components/Stepper";
 import Image from "next/image";
+import { ParetoDecisionCanvas } from "../components/ParetoDecisionCanvas";
+import { QuotaJumpingModal } from "../components/QuotaJumpingModal";
+import { AntiBotCanvasModal } from "../components/AntiBotCanvasModal";
+import { DashAICopilot } from "../components/DashAICopilot";
+import { estimateConfirmationProbability } from "../lib/probabilityModel";
+import { CORRIDOR_QUOTA_HACKS, QuotaHackOption } from "../lib/quotaJumping";
 
 const steps = ["Journey", "Select train", "Passengers", "Review"];
 
@@ -82,6 +88,13 @@ export default function Home() {
   const [showStationGuide, setShowStationGuide] = useState(false); const [showTradeoffs, setShowTradeoffs] = useState(false);
   const [showAdvancedLegs, setShowAdvancedLegs] = useState(false);
   
+  // View Mode & Academic Visualization States (AI511 InfoVis)
+  const [viewMode, setViewMode] = useState<"dual" | "canvas" | "list">("dual");
+  const [hoveredTrainId, setHoveredTrainId] = useState<string | null>(null);
+  const [quotaHackTrain, setQuotaHackTrain] = useState<Train | null>(null);
+  const [appliedQuotaHack, setAppliedQuotaHack] = useState<QuotaHackOption | null>(null);
+  const [showAntiBot, setShowAntiBot] = useState<boolean>(false);
+
   // Passenger Master List State
   const [masterPassengers, setMasterPassengers] = useState<Passenger[]>(initialSavedPassengers);
   // Selected Passenger IDs for the booking
@@ -303,7 +316,33 @@ export default function Home() {
                   </div>
                 </div>
                 <div className="heading-actions">
-                  <button className="secondary-button" onClick={() => setShowTradeoffs(!showTradeoffs)}>✦ Advanced Sort Settings</button>
+                  <div className="view-mode-toggle">
+                    <button
+                      type="button"
+                      className={`view-mode-btn ${viewMode === "dual" ? "active" : ""}`}
+                      onClick={() => setViewMode("dual")}
+                      title="Coordinated Dual View: Pareto Canvas + Card List"
+                    >
+                      ◫ Dual View
+                    </button>
+                    <button
+                      type="button"
+                      className={`view-mode-btn ${viewMode === "canvas" ? "active" : ""}`}
+                      onClick={() => setViewMode("canvas")}
+                      title="Pareto Decision Space Only"
+                    >
+                      📊 Pareto Canvas
+                    </button>
+                    <button
+                      type="button"
+                      className={`view-mode-btn ${viewMode === "list" ? "active" : ""}`}
+                      onClick={() => setViewMode("list")}
+                      title="Standard Card List Only"
+                    >
+                      📋 Card List
+                    </button>
+                  </div>
+                  <button className="secondary-button" onClick={() => setShowTradeoffs(!showTradeoffs)}>✦ Sort Settings</button>
                 </div>
               </div>
 
@@ -319,12 +358,41 @@ export default function Home() {
                 </div>
               )}
 
-              <div className="train-list">
+              {/* Feature A: Interactive Pareto Decision Canvas (AI511 InfoVis) */}
+              {(viewMode === "dual" || viewMode === "canvas") && (
+                <ParetoDecisionCanvas
+                  trains={filtered}
+                  selectedTrain={selected}
+                  onSelectTrain={(t) => {
+                    setSelected(t);
+                    setSelectedClass(t.classes[0] || "3A");
+                    if (!live[`${t.id}:${t.classes[0] || "3A"}`]) {
+                      refreshAvailability(t, t.classes[0] || "3A");
+                    }
+                  }}
+                  hoveredTrainId={hoveredTrainId}
+                  onHoverTrain={setHoveredTrainId}
+                  quota={quota}
+                />
+              )}
+
+              {(viewMode === "dual" || viewMode === "list") && (
+                <div className="train-list">
                 {filtered.map((train, index) => {
                   const isRec = train.id === recommended?.id;
                   const firstClass = train.classes[0] || "";
+                  const probInfo = estimateConfirmationProbability(train, selectedClass || firstClass, quota);
+                  const hasQuotaHack = CORRIDOR_QUOTA_HACKS[train.number];
+                  const isHoverSynced = hoveredTrainId === train.id;
+
                   return (
-                    <article className={`train-card ${isRec && priority !== "balanced" ? "recommended" : ""}`} key={train.id}>
+                    <article
+                      className={`train-card ${isRec && priority !== "balanced" ? "recommended" : ""} ${isHoverSynced ? "recommended" : ""}`}
+                      key={train.id}
+                      onMouseEnter={() => setHoveredTrainId(train.id)}
+                      onMouseLeave={() => setHoveredTrainId(null)}
+                      style={isHoverSynced ? { borderColor: "var(--accent)", boxShadow: "0 0 15px rgba(30, 64, 175, 0.2)" } : undefined}
+                    >
                       <div className="train-main">
                         <div className="train-heading">
                           <div><h3>{train.name}</h3><span>{train.number}</span></div>
@@ -359,6 +427,50 @@ export default function Home() {
                           })}
                         </div>
 
+                        {/* Feature B: Waitlist Probability Meter & Gigerenzer Frequency Framing */}
+                        <div className="prob-meter-box">
+                          <div className="prob-meter-header">
+                            <span style={{ fontWeight: 700, color: "var(--text)" }}>Booking Certainty:</span>
+                            <span
+                              style={{
+                                fontWeight: 800,
+                                fontSize: "11px",
+                                color: probInfo.probability >= 80 ? "#10b981" : probInfo.probability >= 50 ? "#f59e0b" : "#ef4444"
+                              }}
+                            >
+                              {probInfo.probability}% ({probInfo.label})
+                            </span>
+                          </div>
+                          <div className="prob-meter-track">
+                            <div
+                              className="prob-meter-fill"
+                              style={{
+                                width: `${probInfo.probability}%`,
+                                background: probInfo.probability >= 80 ? "#10b981" : probInfo.probability >= 50 ? "#f59e0b" : "#ef4444"
+                              }}
+                            />
+                          </div>
+                          <div className="prob-freq-text">
+                            <span>💡</span>
+                            <span>{probInfo.frequencyText}</span>
+                          </div>
+                        </div>
+
+                        {/* Feature C: Station Quota-Jumping Discovery Pill */}
+                        {hasQuotaHack && (
+                          <div style={{ marginBottom: "10px" }}>
+                            <button
+                              type="button"
+                              className="quota-hack-pill"
+                              onClick={() => setQuotaHackTrain(train)}
+                              title="Click to view interactive route diagram"
+                            >
+                              <span>⚡ Quota Hack Available:</span>
+                              <span>Confirmed seats from {hasQuotaHack.originStation} (+₹{hasQuotaHack.fareDelta}) →</span>
+                            </button>
+                          </div>
+                        )}
+
                         <div className="train-meta">
                           <span>{train.runsOn.slice(0, 3).join(", ")}{train.runsOn.length > 3 ? "..." : ""}</span>
                           <span>₹{train.fare} from</span>
@@ -373,6 +485,7 @@ export default function Home() {
                   );
                 })}
               </div>
+              )}
 
               {compare.length > 0 && (
                 <div className="compare-bar">
@@ -785,30 +898,11 @@ export default function Home() {
                   className="primary-button" 
                   disabled={isProcessingPayment}
                   onClick={() => {
-                    setIsProcessingPayment(true);
-                    setTimeout(() => {
-                      setIsProcessingPayment(false);
-                      setSimulatedTicket({
-                        pnr: "284-9182740",
-                        train: `${selected.name} (${selected.number})`,
-                        route: `${from} → ${selected.toCode}`,
-                        date: prettyDate(date),
-                        classCode: selectedClass,
-                        quota,
-                        amount: groupFare,
-                        passengers: selectedPassengers.map((p, idx) => ({
-                          name: p.name,
-                          coach: selectedClass === "1A" ? "H1" : selectedClass === "2A" ? "A1" : selectedClass === "3A" ? "B2" : "C1",
-                          berth: p.age >= 60 ? "12 (Lower - Senior)" : idx === 1 ? "15 (Middle)" : "16 (Upper)",
-                          status: "CNF (Confirmed)"
-                        }))
-                      });
-                      notify("Simulated Payment Processed! Booking Confirmed.");
-                    }, 1400);
+                    setShowAntiBot(true);
                   }}
                   style={{ minWidth: "220px" }}
                 >
-                  {isProcessingPayment ? "🔒 Contacting Bank Gateway…" : `Proceed to Simulated Pay ₹${groupFare} →`}
+                  Proceed to Verification & Pay ₹{groupFare} →
                 </button>
               </div>
 
@@ -900,6 +994,68 @@ export default function Home() {
           </section>
         </div>
       )}
+
+      {/* Feature D & E: Anti-Bot Blind Canvas Challenge & Progressive Queue Modal */}
+      {showAntiBot && selected && (
+        <AntiBotCanvasModal
+          trainNumber={selected.number}
+          amount={groupFare}
+          onCancel={() => setShowAntiBot(false)}
+          onSuccess={() => {
+            setShowAntiBot(false);
+            setSimulatedTicket({
+              pnr: "284-9182740",
+              train: `${selected.name} (${selected.number})`,
+              route: appliedQuotaHack ? `${appliedQuotaHack.originStation} (Boarding at ${from}) → ${selected.toCode}` : `${from} → ${selected.toCode}`,
+              date: prettyDate(date),
+              classCode: selectedClass,
+              quota: appliedQuotaHack ? appliedQuotaHack.hackQuota : quota,
+              amount: groupFare + (appliedQuotaHack ? appliedQuotaHack.fareDelta * selectedPassengers.length : 0),
+              passengers: selectedPassengers.map((p, idx) => ({
+                name: p.name,
+                coach: selectedClass === "1A" ? "H1" : selectedClass === "2A" ? "A1" : selectedClass === "3A" ? "B2" : "C1",
+                berth: p.age >= 60 ? "12 (Lower - Senior)" : idx === 1 ? "15 (Middle)" : "16 (Upper)",
+                status: "CNF (Confirmed - Allocated)"
+              }))
+            });
+            notify("Security Verified & Booking Confirmed!");
+          }}
+        />
+      )}
+
+      {/* Feature C: Quota Jumping Route Topology Modal */}
+      {quotaHackTrain && (
+        <QuotaJumpingModal
+          train={quotaHackTrain}
+          onClose={() => setQuotaHackTrain(null)}
+          onApplyHack={(hack) => {
+            setAppliedQuotaHack(hack);
+            notify(`Quota Hack Applied: Book from ${hack.originStation}, Board at ${hack.boardingStation}! Confirmed Berth secured.`);
+          }}
+        />
+      )}
+
+      {/* AI Assistant: Dash AI Copilot */}
+      <DashAICopilot
+        trains={filtered}
+        selectedTrain={selected}
+        onSelectTrain={(t) => {
+          setSelected(t);
+          setSelectedClass(t.classes[0] || "3A");
+          setStep(1);
+          notify(`Dash AI selected ${t.name} (${t.number})`);
+        }}
+        onOpenQuotaModal={(t) => {
+          setQuotaHackTrain(t);
+        }}
+        onSwitchView={(v) => {
+          setViewMode(v);
+          setStep(1);
+        }}
+        onSetPriority={(p) => {
+          setPriority(p);
+        }}
+      />
 
       {toast && <div className="toast" role="status">{toast}</div>}
     </main>
