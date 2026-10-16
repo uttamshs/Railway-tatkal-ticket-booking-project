@@ -29,11 +29,6 @@ export function ParetoDecisionCanvas({
   onHoverTrain,
   quota = "General"
 }: Props) {
-  // Direct manipulation thresholds
-  const [maxBudget, setMaxBudget] = useState<number>(1200);
-  const [maxDurationHours, setMaxDurationHours] = useState<number>(5.5);
-  const [pinnedTooltipTrain, setPinnedTooltipTrain] = useState<Train | null>(null);
-
   // Compute processed data points
   const points = useMemo(() => {
     return trains.map(t => {
@@ -52,9 +47,27 @@ export function ParetoDecisionCanvas({
     });
   }, [trains, quota]);
 
+  // Dynamic bounds calculation with graceful defaults
+  const { minDuration, maxDuration, minFare, maxFareVal } = useMemo(() => {
+    if (points.length === 0) {
+      return { minDuration: 200, maxDuration: 360, minFare: 400, maxFareVal: 1300 };
+    }
+    const durs = points.map(p => p.durationMinutes);
+    const fares = points.map(p => p.fare);
+    const minD = Math.max(120, Math.floor((Math.min(...durs) - 25) / 10) * 10);
+    const maxD = Math.ceil((Math.max(...durs) + 30) / 10) * 10;
+    const minF = Math.max(200, Math.floor((Math.min(...fares) - 100) / 50) * 50);
+    const maxF = Math.ceil((Math.max(...fares) + 150) / 50) * 50;
+    return { minDuration: minD, maxDuration: maxD, minFare: minF, maxFareVal: maxF };
+  }, [points]);
+
+  // Direct manipulation thresholds
+  const [maxBudget, setMaxBudget] = useState<number>(() => maxFareVal);
+  const [maxDurationHours, setMaxDurationHours] = useState<number>(() => Math.round((maxDuration / 60) * 10) / 10);
+  const [pinnedTooltipTrain, setPinnedTooltipTrain] = useState<Train | null>(null);
+
   // Compute Pareto Frontier (Minimizing duration and fare, while maximizing probability)
   const paretoPoints = useMemo(() => {
-    // A point is Pareto optimal if no other point is strictly faster AND strictly cheaper with equal or better prob
     const nonDominated: typeof points = [];
     for (const p of points) {
       let isDominated = false;
@@ -74,26 +87,19 @@ export function ParetoDecisionCanvas({
         nonDominated.push(p);
       }
     }
-    // Sort by duration ascending for curve drawing
     return nonDominated.sort((a, b) => a.durationMinutes - b.durationMinutes);
   }, [points]);
 
   // Chart bounds & scales
-  const width = 640;
-  const height = 360;
-  const padding = { top: 30, right: 35, bottom: 50, left: 65 };
-
-  const minDuration = 200; // ~3h 20m
-  const maxDuration = 360; // 6h 00m
-  const minFare = 400;
-  const maxFareVal = 1300;
+  const width = 680;
+  const height = 370;
+  const padding = { top: 35, right: 45, bottom: 55, left: 70 };
 
   const scaleX = (mins: number) => {
     return padding.left + ((mins - minDuration) / (maxDuration - minDuration)) * (width - padding.left - padding.right);
   };
 
   const scaleY = (fare: number) => {
-    // Invert Y so lowest fare is at bottom, highest fare is at top
     return height - padding.bottom - ((fare - minFare) / (maxFareVal - minFare)) * (height - padding.top - padding.bottom);
   };
 
@@ -105,20 +111,59 @@ export function ParetoDecisionCanvas({
       const y = scaleY(p.fare);
       return idx === 0 ? `M ${x} ${y}` : `${acc} L ${x} ${y}`;
     }, "");
-  }, [paretoPoints]);
+  }, [paretoPoints, minDuration, maxDuration, minFare, maxFareVal]);
 
   const activeHoverTrain = pinnedTooltipTrain || points.find(p => p.train.id === hoveredTrainId)?.train || null;
   const activeHoverPoint = points.find(p => p.train.id === activeHoverTrain?.id);
 
+  // Filter metrics
+  const activeCount = points.filter(p => p.fare <= maxBudget && p.durationMinutes <= maxDurationHours * 60).length;
+  const isFiltered = activeCount < points.length;
+
+  // Generate nice round ticks for axes
+  const yTicks = useMemo(() => {
+    const step = (maxFareVal - minFare) / 4;
+    return [0, 1, 2, 3, 4].map(i => Math.round(minFare + i * step));
+  }, [minFare, maxFareVal]);
+
+  const xTicks = useMemo(() => {
+    const step = (maxDuration - minDuration) / 4;
+    return [1, 2, 3].map(i => {
+      const mins = Math.round(minDuration + i * step);
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      return { mins, label: `${h}h ${m < 10 ? "0" : ""}${m}m` };
+    });
+  }, [minDuration, maxDuration]);
+
+  // Smart Tooltip Side: Anchor to left if active point is in right 50%
+  const activePointX = activeHoverPoint ? scaleX(activeHoverPoint.durationMinutes) : 0;
+  const tooltipOnLeft = activePointX > width * 0.52;
+
   return (
-    <div className="pareto-canvas-container">
+    <div className="pareto-canvas-container" style={{ position: "relative" }}>
       {/* Top Controls / Direct Manipulation Sliders */}
       <div className="pareto-header">
         <div>
-          <span className="eyebrow">VISUAL DECISION SUPPORT (AI511 INFOVIS)</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+            <span className="eyebrow" style={{ margin: 0 }}>VISUAL DECISION SUPPORT (AI511 INFOVIS)</span>
+            <span
+              style={{
+                fontSize: "11px",
+                padding: "2px 8px",
+                borderRadius: "999px",
+                background: isFiltered ? "rgba(245, 158, 11, 0.12)" : "rgba(16, 185, 129, 0.12)",
+                color: isFiltered ? "#d97706" : "#059669",
+                fontWeight: 700,
+                border: `1px solid ${isFiltered ? "rgba(245, 158, 11, 0.3)" : "rgba(16, 185, 129, 0.3)"}`
+              }}
+            >
+              {activeCount} of {points.length} candidates visible
+            </span>
+          </div>
           <h3 style={{ margin: "2px 0 4px 0", fontSize: "17px" }}>Interactive 2D Pareto Decision Space</h3>
           <p className="muted" style={{ margin: 0, fontSize: "12px" }}>
-            Spatial multi-criteria trade-off: <strong>Speed (X)</strong> vs <strong>Cost (Y)</strong> vs <strong>Confirmation Certainty (Color)</strong>.
+            Spatial multi-criteria trade-off: <strong>Speed (X)</strong> vs <strong>Cost (Y)</strong> vs <strong>Certainty (Color)</strong>.
           </p>
         </div>
 
@@ -129,8 +174,8 @@ export function ParetoDecisionCanvas({
               <span>Max Budget: <strong>₹{maxBudget}</strong></span>
               <input
                 type="range"
-                min={500}
-                max={1250}
+                min={minFare}
+                max={maxFareVal}
                 step={50}
                 value={maxBudget}
                 onChange={e => setMaxBudget(Number(e.target.value))}
@@ -142,14 +187,26 @@ export function ParetoDecisionCanvas({
               <span>Max Duration: <strong>{maxDurationHours}h</strong></span>
               <input
                 type="range"
-                min={3.5}
-                max={5.5}
+                min={Math.floor((minDuration / 60) * 10) / 10}
+                max={Math.ceil((maxDuration / 60) * 10) / 10}
                 step={0.25}
                 value={maxDurationHours}
                 onChange={e => setMaxDurationHours(Number(e.target.value))}
               />
             </label>
           </div>
+          {isFiltered && (
+            <button
+              className="text-button"
+              onClick={() => {
+                setMaxBudget(maxFareVal);
+                setMaxDurationHours(Math.round((maxDuration / 60) * 10) / 10);
+              }}
+              style={{ fontSize: "11px", padding: "4px 8px", alignSelf: "flex-end", color: "var(--accent)" }}
+            >
+              Reset Filters
+            </button>
+          )}
         </div>
       </div>
 
@@ -160,8 +217,42 @@ export function ParetoDecisionCanvas({
           className="pareto-svg"
           style={{ width: "100%", height: "auto", display: "block" }}
         >
+          <defs>
+            {/* Gradient for Dominant Zone in bottom-left */}
+            <linearGradient id="idealZoneGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#10b981" stopOpacity="0.08" />
+              <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
+            </linearGradient>
+            {/* Filter glow for Pareto nodes */}
+            <filter id="paretoGlow" x="-30%" y="-30%" width="160%" height="160%">
+              <feGaussianBlur stdDeviation="3" result="blur" />
+              <feComposite in="SourceGraphic" in2="blur" operator="over" />
+            </filter>
+          </defs>
+
+          {/* Shaded "Ideal Zone" (Fast & Low Cost) */}
+          <rect
+            x={padding.left}
+            y={scaleY(minFare + (maxFareVal - minFare) * 0.45)}
+            width={(scaleX(minDuration + (maxDuration - minDuration) * 0.45) - padding.left)}
+            height={(height - padding.bottom - scaleY(minFare + (maxFareVal - minFare) * 0.45))}
+            fill="url(#idealZoneGrad)"
+            rx={8}
+          />
+          <text
+            x={padding.left + 10}
+            y={height - padding.bottom - 10}
+            fill="#10b981"
+            fontSize="9"
+            fontWeight="800"
+            letterSpacing="0.05em"
+            opacity={0.65}
+          >
+            ★ DOMINANT ZONE (FAST & ECONOMICAL)
+          </text>
+
           {/* Subtle Gridlines */}
-          {[500, 750, 1000, 1250].map(fare => (
+          {yTicks.map(fare => (
             <line
               key={`grid-y-${fare}`}
               x1={padding.left}
@@ -174,11 +265,11 @@ export function ParetoDecisionCanvas({
             />
           ))}
 
-          {[220, 260, 300, 340].map(dur => (
+          {xTicks.map(item => (
             <line
-              key={`grid-x-${dur}`}
-              x1={scaleX(dur)}
-              x2={scaleX(dur)}
+              key={`grid-x-${item.mins}`}
+              x1={scaleX(item.mins)}
+              x2={scaleX(item.mins)}
               y1={padding.top}
               y2={height - padding.bottom}
               stroke="var(--line)"
@@ -187,8 +278,7 @@ export function ParetoDecisionCanvas({
             />
           ))}
 
-          {/* Interactive Dynamic Threshold Constraints */}
-          {/* Budget Ceiling Line (Y) */}
+          {/* Budget Ceiling Constraint Line (Y) */}
           <line
             x1={padding.left}
             x2={width - padding.right}
@@ -209,7 +299,7 @@ export function ParetoDecisionCanvas({
             Budget Limit ₹{maxBudget}
           </text>
 
-          {/* Duration Deadline Line (X) */}
+          {/* Duration Deadline Constraint Line (X) */}
           <line
             x1={scaleX(maxDurationHours * 60)}
             x2={scaleX(maxDurationHours * 60)}
@@ -229,20 +319,19 @@ export function ParetoDecisionCanvas({
             Max {maxDurationHours}h
           </text>
 
-          {/* Pareto Frontier Line */}
+          {/* Pareto Frontier Curve Line */}
           {paretoPathD && (
             <path
               d={paretoPathD}
               fill="none"
               stroke="var(--accent)"
-              strokeWidth={2}
+              strokeWidth={2.2}
               strokeDasharray="5 3"
               opacity={0.85}
             />
           )}
 
           {/* Axes */}
-          {/* Y Axis Line */}
           <line
             x1={padding.left}
             x2={padding.left}
@@ -251,7 +340,6 @@ export function ParetoDecisionCanvas({
             stroke="var(--line)"
             strokeWidth={1.5}
           />
-          {/* X Axis Line */}
           <line
             x1={padding.left}
             x2={width - padding.right}
@@ -262,11 +350,11 @@ export function ParetoDecisionCanvas({
           />
 
           {/* Y Axis Labels (Fare) */}
-          {[500, 750, 1000, 1250].map(fare => (
+          {yTicks.map(fare => (
             <text
               key={`ylabel-${fare}`}
               x={padding.left - 8}
-              y={scaleY(fare) + 3}
+              y={scaleY(fare) + 3.5}
               fill="var(--muted)"
               fontSize="10.5"
               textAnchor="end"
@@ -275,24 +363,19 @@ export function ParetoDecisionCanvas({
             </text>
           ))}
           <text
-            x={15}
+            x={16}
             y={(padding.top + height - padding.bottom) / 2}
             fill="var(--muted)"
             fontSize="11"
             fontWeight="700"
-            transform={`rotate(-90, 15, ${(padding.top + height - padding.bottom) / 2})`}
+            transform={`rotate(-90, 16, ${(padding.top + height - padding.bottom) / 2})`}
             textAnchor="middle"
           >
-            Fare (₹)
+            Ticket Fare (₹)
           </text>
 
           {/* X Axis Labels (Duration) */}
-          {[
-            { mins: 220, label: "3h 40m" },
-            { mins: 260, label: "4h 20m" },
-            { mins: 300, label: "5h 00m" },
-            { mins: 340, label: "5h 40m" }
-          ].map(item => (
+          {xTicks.map(item => (
             <text
               key={`xlabel-${item.mins}`}
               x={scaleX(item.mins)}
@@ -306,17 +389,17 @@ export function ParetoDecisionCanvas({
           ))}
           <text
             x={(padding.left + width - padding.right) / 2}
-            y={height - 12}
+            y={height - 14}
             fill="var(--muted)"
             fontSize="11"
             fontWeight="700"
             textAnchor="middle"
           >
-            Journey Duration (Faster →)
+            Journey Duration (Faster → Leftward)
           </text>
 
           {/* Render Train Data Points */}
-          {points.map(p => {
+          {points.map((p, idx) => {
             const cx = scaleX(p.durationMinutes);
             const cy = scaleY(p.fare);
             const isHovered = hoveredTrainId === p.train.id || pinnedTooltipTrain?.id === p.train.id;
@@ -332,10 +415,14 @@ export function ParetoDecisionCanvas({
                 ? "#f59e0b" // Amber
                 : "#ef4444"; // Rose
 
+            // Stagger label placement to prevent overlapping
+            const labelOffsetY = idx % 2 === 0 ? -12 : 14;
+            const labelOffsetX = idx % 3 === 0 ? -15 : 12;
+
             return (
               <g
                 key={p.train.id}
-                style={{ cursor: "pointer", transition: "transform 0.2s" }}
+                style={{ cursor: "pointer", transition: "all 0.25s ease" }}
                 onClick={() => {
                   onSelectTrain(p.train);
                   setPinnedTooltipTrain(p.train);
@@ -348,16 +435,17 @@ export function ParetoDecisionCanvas({
                   onHoverTrain(null);
                 }}
               >
-                {/* Outer Glow / Halo for Selected or Pareto */}
+                {/* Outer Glow Halo for Selected or Pareto */}
                 {(isSelected || isHovered || isPareto) && (
                   <circle
                     cx={cx}
                     cy={cy}
-                    r={isSelected || isHovered ? 16 : 12}
+                    r={isSelected || isHovered ? 18 : 13}
                     fill={dotColor}
                     fillOpacity={isHovered || isSelected ? 0.35 : 0.15}
                     stroke={isPareto ? "var(--accent)" : "none"}
-                    strokeWidth={isPareto ? 1 : 0}
+                    strokeWidth={isPareto ? 1.5 : 0}
+                    filter={isPareto ? "url(#paretoGlow)" : undefined}
                   />
                 )}
 
@@ -365,21 +453,37 @@ export function ParetoDecisionCanvas({
                 <circle
                   cx={cx}
                   cy={cy}
-                  r={isSelected || isHovered ? 8 : 6}
+                  r={isSelected || isHovered ? 8.5 : 6.5}
                   fill={isOverBudget ? "var(--muted)" : dotColor}
                   stroke={isSelected ? "#ffffff" : isPareto ? "var(--accent)" : "rgba(0,0,0,0.3)"}
-                  strokeWidth={isSelected ? 2.5 : isPareto ? 2 : 1}
-                  opacity={isOverBudget ? 0.45 : 1}
+                  strokeWidth={isSelected ? 3 : isPareto ? 2 : 1}
+                  opacity={isOverBudget ? 0.3 : 1}
                 />
+
+                {/* Star mark for Pareto Optimal points */}
+                {isPareto && !isOverBudget && (
+                  <text
+                    x={cx}
+                    y={cy + 3.5}
+                    textAnchor="middle"
+                    fill="#ffffff"
+                    fontSize="8"
+                    fontWeight="900"
+                    pointerEvents="none"
+                  >
+                    ★
+                  </text>
+                )}
 
                 {/* Train Number Label next to dot */}
                 <text
-                  x={cx + 10}
-                  y={cy + 3}
+                  x={cx + labelOffsetX}
+                  y={cy + labelOffsetY}
                   fontSize="10"
                   fontWeight={isSelected || isHovered ? "800" : "600"}
                   fill={isHovered || isSelected ? "var(--text)" : isOverBudget ? "var(--muted)" : "var(--text)"}
-                  opacity={isOverBudget && !isHovered ? 0.5 : 0.9}
+                  opacity={isOverBudget && !isHovered ? 0.4 : 0.9}
+                  style={{ textShadow: "0 1px 3px rgba(0,0,0,0.4)" }}
                 >
                   {p.train.number}
                 </text>
@@ -404,29 +508,36 @@ export function ParetoDecisionCanvas({
           </div>
           <div className="legend-item">
             <span className="legend-line" />
-            <span>Pareto Optimal Frontier</span>
+            <span>★ Pareto Frontier Line</span>
           </div>
         </div>
 
-        {/* Coordinated Interactive Floating Tooltip */}
+        {/* Coordinated Interactive Floating Tooltip (Smart Anchored) */}
         {activeHoverPoint && (
           <div
             className="pareto-tooltip-card"
             style={{
               position: "absolute",
               top: 15,
-              right: 20,
-              zIndex: 30
+              ...(tooltipOnLeft ? { left: 75 } : { right: 25 }),
+              zIndex: 30,
+              boxShadow: "0 12px 36px rgba(0,0,0,0.28)",
+              border: "1.5px solid var(--accent)",
+              backdropFilter: "blur(8px)"
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <strong>{activeHoverPoint.train.name} ({activeHoverPoint.train.number})</strong>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "6px" }}>
+              <div>
+                <strong style={{ fontSize: "13.5px", display: "block" }}>{activeHoverPoint.train.name}</strong>
+                <span className="muted" style={{ fontSize: "11px" }}>Train #{activeHoverPoint.train.number}</span>
+              </div>
               <span
                 style={{
-                  fontSize: "10.5px",
+                  fontSize: "10px",
                   fontWeight: 800,
-                  padding: "2px 6px",
-                  borderRadius: "4px",
+                  padding: "3px 7px",
+                  borderRadius: "6px",
+                  whiteSpace: "nowrap",
                   background:
                     activeHoverPoint.probability >= 80 ? "#dcfce7" : activeHoverPoint.probability >= 50 ? "#fef3c7" : "#fee2e2",
                   color:
@@ -436,6 +547,12 @@ export function ParetoDecisionCanvas({
                 {activeHoverPoint.probability}% Clearance
               </span>
             </div>
+
+            {paretoPoints.some(pp => pp.train.id === activeHoverPoint.train.id) && (
+              <div style={{ margin: "6px 0", fontSize: "10.5px", color: "var(--accent)", fontWeight: 700 }}>
+                ★ Pareto Optimal Choice (Non-dominated)
+              </div>
+            )}
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", margin: "8px 0" }}>
               <div className="tooltip-stat">
@@ -455,13 +572,13 @@ export function ParetoDecisionCanvas({
             </div>
 
             {/* Frequency Framing */}
-            <p style={{ margin: "4px 0", fontSize: "11px", color: "var(--text)", fontWeight: 600 }}>
+            <p style={{ margin: "4px 0 8px 0", fontSize: "11px", color: "var(--text)", fontWeight: 600 }}>
               💡 {activeHoverPoint.frequencyText}
             </p>
 
             <button
               className="primary-button"
-              style={{ width: "100%", padding: "6px 10px", fontSize: "12px", marginTop: "6px" }}
+              style={{ width: "100%", padding: "7px 10px", fontSize: "12px" }}
               onClick={() => onSelectTrain(activeHoverPoint.train)}
             >
               Select Train {activeHoverPoint.train.number}

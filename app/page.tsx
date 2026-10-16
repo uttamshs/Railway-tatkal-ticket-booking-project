@@ -94,6 +94,7 @@ export default function Home() {
   const [quotaHackTrain, setQuotaHackTrain] = useState<Train | null>(null);
   const [appliedQuotaHack, setAppliedQuotaHack] = useState<QuotaHackOption | null>(null);
   const [showAntiBot, setShowAntiBot] = useState<boolean>(false);
+  const [expandedProbTrainId, setExpandedProbTrainId] = useState<string | null>(null);
 
   // Passenger Master List State
   const [masterPassengers, setMasterPassengers] = useState<Passenger[]>(initialSavedPassengers);
@@ -114,7 +115,12 @@ export default function Home() {
   const selectedDelhi = useMemo(() => stationClusters.delhi.find(s => s.code === to) || stationClusters.delhi[0], [to]);
   const filtered = useMemo(() => { let r = [...trains]; if (to !== "ALL_DELHI") r = r.filter(t => t.toCode === to); if (stationMode === "ndls") r = r.filter(t => t.toCode === "NDLS"); return rankTrains(r, priority, selectedPassengers, rules.together); }, [trains, to, stationMode, priority, selectedPassengers, rules.together]);
   const recommended = filtered[0] || null;
-  const groupFare = useMemo(() => { if (!selected) return 0; const base = selected.fare || 0; return Math.max(base, 0) * selectedPassengers.length + (meal ? 120 * selectedPassengers.length : 0); }, [selected, selectedPassengers.length, meal]);
+  const groupFare = useMemo(() => {
+    if (!selected) return 0;
+    const hackDelta = (appliedQuotaHack && appliedQuotaHack.trainNumber === selected.number) ? appliedQuotaHack.fareDelta : 0;
+    const base = (selected.fare || 0) + hackDelta;
+    return Math.max(base, 0) * selectedPassengers.length + (meal ? 120 * selectedPassengers.length : 0);
+  }, [selected, selectedPassengers.length, meal, appliedQuotaHack]);
   
   const senior = selectedPassengers.some(p => p.age >= 60); const child = selectedPassengers.some(p => p.age < 12);
   const groupInsight = senior && rules.senior ? "Senior passenger detected — lower-berth preference is being prioritized." : child && rules.child ? "Child passenger detected — Dash will prioritize keeping them with an adult." : rules.together ? "Group cohesion is on — Dash prefers one practical train for everyone." : "Dash will optimise using the constraints you selected.";
@@ -381,9 +387,11 @@ export default function Home() {
                 {filtered.map((train, index) => {
                   const isRec = train.id === recommended?.id;
                   const firstClass = train.classes[0] || "";
-                  const probInfo = estimateConfirmationProbability(train, selectedClass || firstClass, quota);
+                  const activeClass = (selected?.id === train.id && selectedClass) || (train.classes.includes(selectedClass) ? selectedClass : firstClass);
+                  const probInfo = estimateConfirmationProbability(train, activeClass, quota);
                   const hasQuotaHack = CORRIDOR_QUOTA_HACKS[train.number];
                   const isHoverSynced = hoveredTrainId === train.id;
+                  const isProbExpanded = expandedProbTrainId === train.id;
 
                   return (
                     <article
@@ -427,10 +435,15 @@ export default function Home() {
                           })}
                         </div>
 
-                        {/* Feature B: Waitlist Probability Meter & Gigerenzer Frequency Framing */}
+                        {/* Feature B: Waitlist Probability Meter & Gigerenzer Frequency Framing & Explainability */}
                         <div className="prob-meter-box">
                           <div className="prob-meter-header">
-                            <span style={{ fontWeight: 700, color: "var(--text)" }}>Booking Certainty:</span>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                              <span style={{ fontWeight: 700, color: "var(--text)" }}>Booking Certainty:</span>
+                              <span style={{ fontSize: "10.5px", color: "var(--muted)", background: "var(--panel)", padding: "1px 6px", borderRadius: "4px" }}>
+                                {activeClass}
+                              </span>
+                            </div>
                             <span
                               style={{
                                 fontWeight: 800,
@@ -450,10 +463,44 @@ export default function Home() {
                               }}
                             />
                           </div>
-                          <div className="prob-freq-text">
-                            <span>💡</span>
-                            <span>{probInfo.frequencyText}</span>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "6px" }}>
+                            <div className="prob-freq-text">
+                              <span>💡</span>
+                              <span>{probInfo.frequencyText}</span>
+                            </div>
+                            <button
+                              type="button"
+                              className="text-button"
+                              style={{ fontSize: "10.5px", padding: "2px 6px", color: "var(--accent)", fontWeight: 700 }}
+                              onClick={() => setExpandedProbTrainId(isProbExpanded ? null : train.id)}
+                            >
+                              {isProbExpanded ? "▲ Hide factors" : "▼ Explain estimate"}
+                            </button>
                           </div>
+
+                          {/* Explainable AI Factors Drawer */}
+                          {isProbExpanded && (
+                            <div
+                              style={{
+                                marginTop: "8px",
+                                paddingTop: "8px",
+                                borderTop: "1px dashed var(--line)",
+                                fontSize: "11px"
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                                <span className="muted">Statistical Model Confidence:</span>
+                                <strong style={{ color: "#10b981" }}>{probInfo.confidence} Confidence</strong>
+                              </div>
+                              <ul style={{ margin: "4px 0 0 0", paddingLeft: "16px", color: "var(--muted)", lineHeight: "1.5" }}>
+                                {probInfo.factors.map((f, fIdx) => (
+                                  <li key={fIdx} style={{ color: f.startsWith("+") ? "#10b981" : f.startsWith("-") ? "#ef4444" : "var(--muted)" }}>
+                                    {f}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
                         </div>
 
                         {/* Feature C: Station Quota-Jumping Discovery Pill */}
@@ -465,8 +512,9 @@ export default function Home() {
                               onClick={() => setQuotaHackTrain(train)}
                               title="Click to view interactive route diagram"
                             >
-                              <span>⚡ Quota Hack Available:</span>
-                              <span>Confirmed seats from {hasQuotaHack.originStation} (+₹{hasQuotaHack.fareDelta}) →</span>
+                              <span>⚡</span>
+                              <span>Quota Hack Available:</span>
+                              <strong>Confirmed seats from {hasQuotaHack.originStation} (+₹{hasQuotaHack.fareDelta}) →</strong>
                             </button>
                           </div>
                         )}
@@ -621,10 +669,37 @@ export default function Home() {
                   </p>
                 </div>
               </div>
+
+              {/* Quota Jumping Active Optimization Banner */}
+              {appliedQuotaHack && (
+                <div style={{ padding: "14px 18px", background: "rgba(16, 185, 129, 0.08)", border: "1.5px solid #10b981", borderRadius: "12px", marginBottom: "18px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                  <div>
+                    <span className="eyebrow" style={{ color: "#10b981", margin: 0 }}>⚡ STATION QUOTA-JUMP ACTIVE (ALGORITHMIC FIX)</span>
+                    <strong style={{ display: "block", fontSize: "14px", color: "var(--text)", margin: "4px 0 2px" }}>
+                      Ticket Booked from {appliedQuotaHack.originStation} ({appliedQuotaHack.originCode}) → {selected.toCode}
+                    </strong>
+                    <span style={{ fontSize: "12px", color: "var(--muted)" }}>
+                      Boarding Point modified to <strong>Jaipur Junction (JP)</strong> · Master pool: <strong>{appliedQuotaHack.hackQuota}</strong>
+                    </span>
+                  </div>
+                  <button
+                    className="secondary-button"
+                    onClick={() => {
+                      setAppliedQuotaHack(null);
+                      notify("Reverted to standard direct booking.");
+                    }}
+                    style={{ fontSize: "11.5px", padding: "6px 12px", color: "var(--danger)", borderColor: "var(--danger)" }}
+                  >
+                    Remove Quota Hack
+                  </button>
+                </div>
+              )}
               
               <div className="review-grid">
                 <div className="review-card">
-                  <span>Journey</span><strong>{from} → {selected.toCode}</strong><small>{prettyDate(date)} · {quota}</small>
+                  <span>Journey</span>
+                  <strong>{appliedQuotaHack ? `${appliedQuotaHack.originCode} → ${selected.toCode}` : `${from} → ${selected.toCode}`}</strong>
+                  <small>{prettyDate(date)} · {appliedQuotaHack ? appliedQuotaHack.hackQuota : quota}{appliedQuotaHack ? " (Board at JP)" : ""}</small>
                 </div>
                 <div className="review-card">
                   <span>Train</span><strong>{selected.name} ({selected.number})</strong><small>{selected.departure} – {selected.arrival} · {selectedClass}</small>
@@ -874,6 +949,12 @@ export default function Home() {
                   <span>Base Rail Fare ({selectedPassengers.length} x ₹{selected.fare})</span>
                   <span>₹{selected.fare * selectedPassengers.length}</span>
                 </div>
+                {appliedQuotaHack && (
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 2px", fontSize: "13px", color: "#10b981", fontWeight: 600 }}>
+                    <span>Station Quota-Jump Booking ({appliedQuotaHack.originCode} → {selected.toCode}, Board at {from})</span>
+                    <span>+₹{appliedQuotaHack.fareDelta * selectedPassengers.length}</span>
+                  </div>
+                )}
                 {meal && (
                   <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 2px", fontSize: "13px", color: "var(--muted)" }}>
                     <span>IRCTC Standard Catering Meal ({selectedPassengers.length} x ₹120)</span>
@@ -1010,7 +1091,7 @@ export default function Home() {
               date: prettyDate(date),
               classCode: selectedClass,
               quota: appliedQuotaHack ? appliedQuotaHack.hackQuota : quota,
-              amount: groupFare + (appliedQuotaHack ? appliedQuotaHack.fareDelta * selectedPassengers.length : 0),
+              amount: groupFare,
               passengers: selectedPassengers.map((p, idx) => ({
                 name: p.name,
                 coach: selectedClass === "1A" ? "H1" : selectedClass === "2A" ? "A1" : selectedClass === "3A" ? "B2" : "C1",
