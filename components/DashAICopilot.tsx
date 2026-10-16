@@ -13,6 +13,83 @@ interface Props {
   onSetPriority: (p: any) => void;
 }
 
+function renderFormattedMessage(text: string) {
+  const lines = text.split("\n");
+  const isList = lines.some(l => l.trim().startsWith("- "));
+
+  if (isList) {
+    const elements: React.ReactNode[] = [];
+    let currentList: React.ReactNode[] = [];
+
+    lines.forEach((line, idx) => {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("- ")) {
+        const content = trimmed.substring(2);
+        const parts = content.split(/(\*\*.*?\*\*)/g);
+        currentList.push(
+          <li key={`li-${idx}`} style={{ marginBottom: "4px" }}>
+            {parts.map((p, pIdx) =>
+              p.startsWith("**") && p.endsWith("**") ? (
+                <strong key={pIdx}>{p.slice(2, -2)}</strong>
+              ) : (
+                p
+              )
+            )}
+          </li>
+        );
+      } else {
+        if (currentList.length > 0) {
+          elements.push(
+            <ul key={`ul-${idx}`} style={{ margin: "6px 0", paddingLeft: "18px" }}>
+              {currentList}
+            </ul>
+          );
+          currentList = [];
+        }
+        if (trimmed) {
+          const parts = trimmed.split(/(\*\*.*?\*\*)/g);
+          elements.push(
+            <p key={`p-${idx}`} style={{ margin: "4px 0" }}>
+              {parts.map((p, pIdx) =>
+                p.startsWith("**") && p.endsWith("**") ? (
+                  <strong key={pIdx}>{p.slice(2, -2)}</strong>
+                ) : (
+                  p
+                )
+              )}
+            </p>
+          );
+        }
+      }
+    });
+
+    if (currentList.length > 0) {
+      elements.push(
+        <ul key="ul-end" style={{ margin: "6px 0", paddingLeft: "18px" }}>
+          {currentList}
+        </ul>
+      );
+    }
+    return elements;
+  }
+
+  // Standard paragraph rendering with **bold** support
+  return lines.map((line, idx) => {
+    const parts = line.split(/(\*\*.*?\*\*)/g);
+    return (
+      <span key={idx} style={{ display: "block", marginBottom: idx < lines.length - 1 ? "6px" : 0 }}>
+        {parts.map((p, pIdx) =>
+          p.startsWith("**") && p.endsWith("**") ? (
+            <strong key={pIdx}>{p.slice(2, -2)}</strong>
+          ) : (
+            p
+          )
+        )}
+      </span>
+    );
+  });
+}
+
 export function DashAICopilot({
   trains,
   selectedTrain,
@@ -27,12 +104,13 @@ export function DashAICopilot({
     {
       id: "init-1",
       sender: "assistant",
-      text: "👋 Hi Harshit! I am **Dash AI Copilot**. I analyze multi-criteria trade-offs across the Jaipur ↔ Delhi corridor. Ask me about **fastest morning arrivals**, **quota-jumping hacks**, **senior lower berth allocation**, or **Pareto optimality**!",
+      text: "👋 Hi! I am **Dash AI Copilot**.\nI analyze multi-criteria trade-offs across the Jaipur ↔ Delhi corridor. Ask me about **fastest morning arrivals**, **quota-jumping hacks**, **senior lower berth allocation**, or **Pareto optimality**!",
       timestamp: "Just now"
     }
   ]);
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -41,8 +119,20 @@ export function DashAICopilot({
   useEffect(() => {
     if (isOpen) {
       scrollToBottom();
+      setTimeout(() => inputRef.current?.focus(), 150);
     }
   }, [messages, isOpen]);
+
+  // Handle escape key to close drawer
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen) {
+        setIsOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen]);
 
   const handleSend = (textToSend?: string) => {
     const query = textToSend || input;
@@ -70,7 +160,7 @@ export function DashAICopilot({
       };
       setMessages(prev => [...prev, aiMsg]);
       setIsTyping(false);
-    }, 600);
+    }, 550);
   };
 
   const handleAction = (action?: ChatMessage["action"]) => {
@@ -108,11 +198,11 @@ export function DashAICopilot({
           display: "flex",
           alignItems: "center",
           gap: "8px",
-          boxShadow: "0 8px 24px rgba(30, 64, 175, 0.25)",
+          boxShadow: "0 8px 24px rgba(30, 64, 175, 0.28)",
           fontWeight: 800,
           fontSize: "13.5px",
           cursor: "pointer",
-          transition: "transform 0.2s"
+          transition: "transform 0.2s, box-shadow 0.2s"
         }}
       >
         <span style={{ fontSize: "16px" }}>✦</span>
@@ -124,7 +214,7 @@ export function DashAICopilot({
         )}
       </button>
 
-      {/* Floating Slide-Over Drawer / Panel */}
+      {/* Floating Slide-Over Drawer */}
       {isOpen && (
         <div className="copilot-overlay" onClick={() => setIsOpen(false)}>
           <div
@@ -135,20 +225,20 @@ export function DashAICopilot({
               top: 0,
               right: 0,
               bottom: 0,
-              width: "min(440px, 95vw)",
+              width: "min(460px, 95vw)",
               background: "var(--panel)",
               borderLeft: "1px solid var(--line)",
               zIndex: 90,
               display: "flex",
               flexDirection: "column",
-              boxShadow: "-10px 0 40px rgba(0,0,0,0.3)",
+              boxShadow: "-10px 0 40px rgba(0,0,0,0.35)",
               animation: "slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1)"
             }}
           >
             {/* Header */}
             <div
               style={{
-                padding: "18px 20px",
+                padding: "16px 20px",
                 borderBottom: "1px solid var(--line)",
                 display: "flex",
                 justifyContent: "space-between",
@@ -159,20 +249,21 @@ export function DashAICopilot({
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <div
                   style={{
-                    width: "32px",
-                    height: "32px",
-                    borderRadius: "8px",
+                    width: "34px",
+                    height: "34px",
+                    borderRadius: "9px",
                     background: "var(--accent)",
                     color: "var(--bg)",
                     display: "grid",
                     placeItems: "center",
-                    fontWeight: 900
+                    fontWeight: 900,
+                    fontSize: "16px"
                   }}
                 >
                   ✦
                 </div>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: "15px" }}>Dash AI Copilot</h3>
+                  <h3 style={{ margin: 0, fontSize: "15px" }}>Dash AI Decision Copilot</h3>
                   <span style={{ fontSize: "11px", color: "#10b981", fontWeight: 700 }}>
                     ● Online · Corridor Intelligence Active
                   </span>
@@ -181,7 +272,8 @@ export function DashAICopilot({
               <button
                 className="icon-button"
                 onClick={() => setIsOpen(false)}
-                style={{ fontSize: "24px" }}
+                style={{ fontSize: "24px", lineHeight: "1" }}
+                title="Close Drawer"
               >
                 ×
               </button>
@@ -190,20 +282,21 @@ export function DashAICopilot({
             {/* Quick Prompt Chips */}
             <div
               style={{
-                padding: "12px 16px",
+                padding: "10px 16px",
                 borderBottom: "1px solid var(--line)",
                 background: "var(--panel)",
                 display: "flex",
                 gap: "6px",
-                overflowX: "auto"
+                overflowX: "auto",
+                scrollbarWidth: "none"
               }}
             >
               {[
                 "⚡ Fastest morning train",
                 "💡 Explain Ajmer quota hack",
-                "🔍 Swarna Rajdhani vs Vande Bharat",
                 "👴 Senior citizen lower berth",
-                "📊 Explain Pareto frontier"
+                "📊 Explain Pareto frontier",
+                "🔍 Rajdhani vs Vande Bharat"
               ].map(chip => (
                 <button
                   key={chip}
@@ -211,12 +304,14 @@ export function DashAICopilot({
                   style={{
                     whiteSpace: "nowrap",
                     fontSize: "11px",
-                    padding: "5px 10px",
+                    padding: "5px 11px",
                     borderRadius: "999px",
                     border: "1px solid var(--line)",
                     background: "var(--panel2)",
                     color: "var(--text)",
-                    cursor: "pointer"
+                    cursor: "pointer",
+                    fontWeight: 600,
+                    transition: "all 0.15s"
                   }}
                 >
                   {chip}
@@ -256,26 +351,34 @@ export function DashAICopilot({
                         color: isUser ? "var(--bg)" : "var(--text)",
                         border: isUser ? "none" : "1px solid var(--line)",
                         fontSize: "13px",
-                        lineHeight: "1.55",
-                        whiteSpace: "pre-wrap"
+                        lineHeight: "1.55"
                       }}
                     >
-                      {m.text}
+                      {/* Formatted Markdown Content */}
+                      <div>{renderFormattedMessage(m.text)}</div>
 
-                      {/* Interactive UI Trigger Button */}
+                      {/* Interactive UI Trigger Action Button */}
                       {m.action && (
-                        <div style={{ marginTop: "10px", paddingTop: "8px", borderTop: "1px dashed rgba(255,255,255,0.2)" }}>
+                        <div
+                          style={{
+                            marginTop: "10px",
+                            paddingTop: "8px",
+                            borderTop: isUser
+                              ? "1px dashed rgba(255,255,255,0.25)"
+                              : "1px dashed var(--line)"
+                          }}
+                        >
                           <button
                             className="primary-button"
                             onClick={() => handleAction(m.action)}
                             style={{
                               fontSize: "11.5px",
-                              padding: "6px 12px",
-                              background: isUser ? "#fff" : "var(--accent)",
+                              padding: "7px 12px",
+                              background: isUser ? "var(--bg)" : "var(--accent)",
                               color: isUser ? "var(--accent)" : "var(--bg)",
                               fontWeight: 800,
                               width: "100%",
-                              borderRadius: "6px"
+                              borderRadius: "7px"
                             }}
                           >
                             {m.action.label}
@@ -290,9 +393,26 @@ export function DashAICopilot({
                 );
               })}
 
+              {/* Animated Typing Indicator */}
               {isTyping && (
-                <div style={{ alignSelf: "flex-start", padding: "8px 14px", background: "var(--panel2)", borderRadius: "10px", fontSize: "12px", color: "var(--muted)" }}>
-                  Dash AI is formulating trade-off analysis…
+                <div
+                  style={{
+                    alignSelf: "flex-start",
+                    padding: "10px 14px",
+                    background: "var(--panel2)",
+                    borderRadius: "12px",
+                    border: "1px solid var(--line)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "5px"
+                  }}
+                >
+                  <span style={{ fontSize: "11px", color: "var(--muted)", marginRight: "4px" }}>
+                    Dash AI is thinking
+                  </span>
+                  <span className="typing-dot" style={{ width: "5px", height: "5px", borderRadius: "50%", background: "var(--accent)", display: "inline-block", animation: "bounceDot 1.4s infinite ease-in-out" }} />
+                  <span className="typing-dot" style={{ width: "5px", height: "5px", borderRadius: "50%", background: "var(--accent)", display: "inline-block", animation: "bounceDot 1.4s infinite ease-in-out 0.2s" }} />
+                  <span className="typing-dot" style={{ width: "5px", height: "5px", borderRadius: "50%", background: "var(--accent)", display: "inline-block", animation: "bounceDot 1.4s infinite ease-in-out 0.4s" }} />
                 </div>
               )}
               <div ref={messagesEndRef} />
@@ -309,8 +429,9 @@ export function DashAICopilot({
               }}
             >
               <input
+                ref={inputRef}
                 type="text"
-                placeholder="Ask Dash AI about trains, trade-offs, quotas…"
+                placeholder="Ask about trains, trade-offs, quotas, lower berths…"
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && handleSend()}
@@ -319,7 +440,7 @@ export function DashAICopilot({
               <button
                 className="primary-button"
                 onClick={() => handleSend()}
-                style={{ padding: "0 16px" }}
+                style={{ padding: "0 16px", fontWeight: 800 }}
               >
                 Send
               </button>
