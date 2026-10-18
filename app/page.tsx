@@ -66,9 +66,23 @@ export default function Home() {
   const [simulatedTicket, setSimulatedTicket] = useState<any>(null);
 
   useEffect(() => {
-    // Apply light-theme to <html> (= :root) so CSS variables override the :root dark defaults
-    if (theme === "light") document.documentElement.classList.add("light-theme");
-    else document.documentElement.classList.remove("light-theme");
+    const root = document.documentElement;
+    const body = document.body;
+    if (theme === "light") {
+      root.classList.remove("dark-theme");
+      root.classList.add("light-theme");
+      body.classList.remove("dark-theme");
+      body.classList.add("light-theme");
+      root.setAttribute("data-theme", "light");
+      body.setAttribute("data-theme", "light");
+    } else {
+      root.classList.remove("light-theme");
+      root.classList.add("dark-theme");
+      body.classList.remove("light-theme");
+      body.classList.add("dark-theme");
+      root.setAttribute("data-theme", "dark");
+      body.setAttribute("data-theme", "dark");
+    }
   }, [theme]);
 
   const [mode, setMode] = useState<"search" | "trips" | "passengers" | "status">("search");
@@ -380,6 +394,7 @@ export default function Home() {
                 <ThreeDDecisionCanvas
                   trains={filtered}
                   selectedTrain={selected}
+                  theme={theme}
                   onSelectTrain={(t) => {
                     setSelected(t);
                     setSelectedClass(t.classes[0] || "3A");
