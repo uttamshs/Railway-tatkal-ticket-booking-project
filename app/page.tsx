@@ -44,6 +44,23 @@ function normalize(raw: any, index: number): Train {
 
 export default function Home() {
   const [theme, setTheme] = useState<"dark" | "light">("light");
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("dash_theme") as "dark" | "light" | null;
+      if (stored === "light" || stored === "dark") {
+        setTheme(stored);
+      }
+    } catch {}
+  }, []);
+
+  const handleSetTheme = (newTheme: "dark" | "light") => {
+    setTheme(newTheme);
+    try {
+      localStorage.setItem("dash_theme", newTheme);
+    } catch {}
+  };
+
   const [showIntro, setShowIntro] = useState(true);
 
   useEffect(() => {
@@ -199,7 +216,7 @@ export default function Home() {
   const updateLegPref = (legId: string, passengerId: string, key: "classCode" | "berth", value: string) => setLegPrefs(v => ({ ...v, [legId]: { ...(v[legId] || {}), [passengerId]: { ...(v[legId]?.[passengerId] || { classCode: "Any", berth: "Any" }), [key]: value } } }));
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell ${theme === "light" ? "light-theme" : "dark-theme"}`} data-theme={theme}>
       {/* 2-Second Animated Intro Overlay */}
       {showIntro && (
         <div className="intro-splash-screen" onClick={() => setShowIntro(false)} title="Click to skip">
@@ -228,9 +245,24 @@ export default function Home() {
           ))}
         </nav>
         <div className="topbar-right">
-          <button className="text-button" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
-            {theme === "dark" ? "☀️ Light Mode" : "🌙 Dark Mode"}
-          </button>
+          <div className="theme-toggle-segmented" role="group" aria-label="Theme selection">
+            <button
+              type="button"
+              className={`theme-segment-btn ${theme === "light" ? "active" : ""}`}
+              onClick={() => handleSetTheme("light")}
+              title="Switch to Light Mode"
+            >
+              ☀️ Light
+            </button>
+            <button
+              type="button"
+              className={`theme-segment-btn ${theme === "dark" ? "active" : ""}`}
+              onClick={() => handleSetTheme("dark")}
+              title="Switch to Dark Mode"
+            >
+              🌙 Dark
+            </button>
+          </div>
           <span className="prototype-pill">Dash Journey Planner</span>
         </div>
       </header>
