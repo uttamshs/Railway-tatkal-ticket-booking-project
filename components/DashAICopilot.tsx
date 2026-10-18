@@ -9,7 +9,7 @@ interface Props {
   selectedTrain: Train | null;
   onSelectTrain: (train: Train) => void;
   onOpenQuotaModal: (train: Train) => void;
-  onSwitchView: (view: "canvas" | "list") => void;
+  onSwitchView: (view: "canvas" | "list" | "3d" | "dual") => void;
   onSetPriority: (p: any) => void;
 }
 

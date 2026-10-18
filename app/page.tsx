@@ -7,6 +7,7 @@ import { rankTrains, tradeoffs } from "../lib/recommendation";
 import { Stepper } from "../components/Stepper";
 import Image from "next/image";
 import { ParetoDecisionCanvas } from "../components/ParetoDecisionCanvas";
+import { ThreeDDecisionCanvas } from "../components/ThreeDDecisionCanvas";
 import { QuotaJumpingModal } from "../components/QuotaJumpingModal";
 import { AntiBotCanvasModal } from "../components/AntiBotCanvasModal";
 import { DashAICopilot } from "../components/DashAICopilot";
@@ -65,8 +66,9 @@ export default function Home() {
   const [simulatedTicket, setSimulatedTicket] = useState<any>(null);
 
   useEffect(() => {
-    if (theme === "light") document.body.classList.add("light-theme");
-    else document.body.classList.remove("light-theme");
+    // Apply light-theme to <html> (= :root) so CSS variables override the :root dark defaults
+    if (theme === "light") document.documentElement.classList.add("light-theme");
+    else document.documentElement.classList.remove("light-theme");
   }, [theme]);
 
   const [mode, setMode] = useState<"search" | "trips" | "passengers" | "status">("search");
@@ -89,7 +91,7 @@ export default function Home() {
   const [showAdvancedLegs, setShowAdvancedLegs] = useState(false);
   
   // View Mode & Academic Visualization States (AI511 InfoVis)
-  const [viewMode, setViewMode] = useState<"dual" | "canvas" | "list">("dual");
+  const [viewMode, setViewMode] = useState<"dual" | "canvas" | "list" | "3d">("3d");
   const [hoveredTrainId, setHoveredTrainId] = useState<string | null>(null);
   const [quotaHackTrain, setQuotaHackTrain] = useState<Train | null>(null);
   const [appliedQuotaHack, setAppliedQuotaHack] = useState<QuotaHackOption | null>(null);
@@ -325,6 +327,15 @@ export default function Home() {
                   <div className="view-mode-toggle">
                     <button
                       type="button"
+                      className={`view-mode-btn ${viewMode === "3d" ? "active" : ""}`}
+                      onClick={() => setViewMode("3d")}
+                      title="Immersive 3D Decision Space — drag to orbit, scroll to zoom"
+                      style={viewMode === "3d" ? { background: "linear-gradient(135deg,rgba(139,92,246,0.25),rgba(30,64,175,0.2))", borderColor: "rgba(139,92,246,0.6)", color: "#c4b5fd" } : {}}
+                    >
+                      🌐 3D Space
+                    </button>
+                    <button
+                      type="button"
                       className={`view-mode-btn ${viewMode === "dual" ? "active" : ""}`}
                       onClick={() => setViewMode("dual")}
                       title="Coordinated Dual View: Pareto Canvas + Card List"
@@ -362,6 +373,32 @@ export default function Home() {
                     {priorities.map(p => <option value={p[0]} key={p[0]}>{p[1]} - {p[2]}</option>)}
                   </select>
                 </div>
+              )}
+
+              {/* Feature A+: Immersive 3D Decision Space */}
+              {viewMode === "3d" && (
+                <ThreeDDecisionCanvas
+                  trains={filtered}
+                  selectedTrain={selected}
+                  onSelectTrain={(t) => {
+                    setSelected(t);
+                    setSelectedClass(t.classes[0] || "3A");
+                    if (!live[`${t.id}:${t.classes[0] || "3A"}`]) {
+                      refreshAvailability(t, t.classes[0] || "3A");
+                    }
+                  }}
+                  onBookTrain={(t) => {
+                    setSelected(t);
+                    setSelectedClass(t.classes[0] || "3A");
+                    if (!live[`${t.id}:${t.classes[0] || "3A"}`]) {
+                      refreshAvailability(t, t.classes[0] || "3A");
+                    }
+                    setStep(2);
+                  }}
+                  hoveredTrainId={hoveredTrainId}
+                  onHoverTrain={setHoveredTrainId}
+                  quota={quota}
+                />
               )}
 
               {/* Feature A: Interactive Pareto Decision Canvas (AI511 InfoVis) */}
