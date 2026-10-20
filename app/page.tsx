@@ -61,14 +61,18 @@ export default function Home() {
       if (typeof document !== "undefined") {
         const root = document.documentElement;
         const body = document.body;
+        const isL = newTheme === "light";
         root.classList.remove("light-theme", "dark-theme");
         root.classList.add(newTheme + "-theme");
         root.setAttribute("data-theme", newTheme);
-        root.style.colorScheme = newTheme;
+        root.style.colorScheme = isL ? "only light" : "dark";
+        root.style.backgroundColor = isL ? "#ffffff" : "#081018";
         if (body) {
           body.classList.remove("light-theme", "dark-theme");
           body.classList.add(newTheme + "-theme");
           body.setAttribute("data-theme", newTheme);
+          body.style.backgroundColor = isL ? "#ffffff" : "#081018";
+          body.style.colorScheme = isL ? "only light" : "dark";
         }
       }
     } catch {}
@@ -98,20 +102,18 @@ export default function Home() {
   useEffect(() => {
     const root = document.documentElement;
     const body = document.body;
-    if (theme === "light") {
-      root.classList.remove("dark-theme");
-      root.classList.add("light-theme");
-      body.classList.remove("dark-theme");
-      body.classList.add("light-theme");
-      root.setAttribute("data-theme", "light");
-      body.setAttribute("data-theme", "light");
-    } else {
-      root.classList.remove("light-theme");
-      root.classList.add("dark-theme");
-      body.classList.remove("light-theme");
-      body.classList.add("dark-theme");
-      root.setAttribute("data-theme", "dark");
-      body.setAttribute("data-theme", "dark");
+    const isL = theme === "light";
+    root.classList.remove("dark-theme", "light-theme");
+    root.classList.add(isL ? "light-theme" : "dark-theme");
+    root.setAttribute("data-theme", theme);
+    root.style.colorScheme = isL ? "only light" : "dark";
+    root.style.backgroundColor = isL ? "#ffffff" : "#081018";
+    if (body) {
+      body.classList.remove("dark-theme", "light-theme");
+      body.classList.add(isL ? "light-theme" : "dark-theme");
+      body.setAttribute("data-theme", theme);
+      body.style.backgroundColor = isL ? "#ffffff" : "#081018";
+      body.style.colorScheme = isL ? "only light" : "dark";
     }
   }, [theme]);
 
@@ -229,7 +231,15 @@ export default function Home() {
   const updateLegPref = (legId: string, passengerId: string, key: "classCode" | "berth", value: string) => setLegPrefs(v => ({ ...v, [legId]: { ...(v[legId] || {}), [passengerId]: { ...(v[legId]?.[passengerId] || { classCode: "Any", berth: "Any" }), [key]: value } } }));
 
   return (
-    <main className={`app-shell ${theme === "light" ? "light-theme" : "dark-theme"}`} data-theme={theme}>
+    <main
+      className={`app-shell ${theme === "light" ? "light-theme" : "dark-theme"}`}
+      data-theme={theme}
+      style={{
+        backgroundColor: theme === "light" ? "#ffffff" : "#081018",
+        color: theme === "light" ? "#0f172a" : "#f2f6f8",
+        minHeight: "100vh",
+      }}
+    >
       {/* 2-Second Animated Intro Overlay */}
       {showIntro && (
         <div className="intro-splash-screen" onClick={() => setShowIntro(false)} title="Click to skip">

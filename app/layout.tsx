@@ -16,9 +16,10 @@ export default function RootLayout({
   return (
     <html lang="en" className="light-theme" data-theme="light" suppressHydrationWarning>
       <head>
+        <meta name="color-scheme" content="light dark" />
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var s=localStorage.getItem('dash_theme');var t=(s==='dark'||s==='light')?s:'light';var cl=document.documentElement.classList;cl.remove('dark-theme','light-theme');cl.add(t+'-theme');document.documentElement.setAttribute('data-theme',t);document.documentElement.style.colorScheme=t;}catch(e){}})();`,
+            __html: `(function(){try{var s=localStorage.getItem('dash_theme');var t=(s==='dark'||s==='light')?s:'light';var cl=document.documentElement.classList;cl.remove('dark-theme','light-theme');cl.add(t+'-theme');document.documentElement.setAttribute('data-theme',t);document.documentElement.style.colorScheme=t==='light'?'only light':'dark';document.documentElement.style.backgroundColor=t==='light'?'#ffffff':'#081018';if(document.body){document.body.style.backgroundColor=t==='light'?'#ffffff':'#081018';}}catch(e){}})();`,
           }}
         />
       </head>

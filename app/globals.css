@@ -31,17 +31,20 @@ body[data-theme="light"],
   --danger: #ef4444 !important;
   --warn: #eab308 !important;
   --shadow: 0 10px 40px rgba(0, 0, 0, 0.06) !important;
-  color-scheme: light !important;
+  color-scheme: only light !important;
   background-color: #ffffff !important;
+  background: #ffffff !important;
   color: #0f172a !important;
 }
 
 html.light-theme body,
 body.light-theme,
-.app-shell.light-theme {
+.app-shell.light-theme,
+html.light-theme {
   background: radial-gradient(circle at 20% -10%, rgba(30, 64, 175, 0.06) 0, transparent 40%), #ffffff !important;
   background-color: #ffffff !important;
   color: #0f172a !important;
+  color-scheme: only light !important;
 }
 
 /* ── DARK THEME (Deep Navy + Mint Green Compliment) ────────────────────────── */
