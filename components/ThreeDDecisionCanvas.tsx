@@ -174,7 +174,7 @@ export function ThreeDDecisionCanvas({
   hoveredTrainId,
   onHoverTrain,
   quota = "General",
-  theme = "dark",
+  theme = "light",
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animFrameRef = useRef<number>(0);

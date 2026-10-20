@@ -58,6 +58,19 @@ export default function Home() {
     setTheme(newTheme);
     try {
       localStorage.setItem("dash_theme", newTheme);
+      if (typeof document !== "undefined") {
+        const root = document.documentElement;
+        const body = document.body;
+        root.classList.remove("light-theme", "dark-theme");
+        root.classList.add(newTheme + "-theme");
+        root.setAttribute("data-theme", newTheme);
+        root.style.colorScheme = newTheme;
+        if (body) {
+          body.classList.remove("light-theme", "dark-theme");
+          body.classList.add(newTheme + "-theme");
+          body.setAttribute("data-theme", newTheme);
+        }
+      }
     } catch {}
   };
 

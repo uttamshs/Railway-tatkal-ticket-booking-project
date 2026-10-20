@@ -905,7 +905,7 @@ export function ParetoDecisionCanvas({
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginBottom: "8px" }}>
               <div>
-                <strong style={{ fontSize: "14px", color: "#f8fafc", display: "block" }}>
+                <strong style={{ fontSize: "14px", color: "var(--text)", display: "block" }}>
                   {activeHoverPoint.train.name}
                 </strong>
                 <span style={{ fontSize: "11px", color: "var(--muted)" }}>
@@ -1032,7 +1032,7 @@ export function ParetoDecisionCanvas({
             }}
           >
             <span style={{ fontSize: "36px", marginBottom: "8px" }}>🔍</span>
-            <strong style={{ fontSize: "16px", color: "#f8fafc", marginBottom: "4px" }}>
+            <strong style={{ fontSize: "16px", color: "var(--text)", marginBottom: "4px" }}>
               No services meet current constraints
             </strong>
             <p className="muted" style={{ fontSize: "12px", maxWidth: "340px", margin: "0 0 14px" }}>
