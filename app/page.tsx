@@ -258,24 +258,16 @@ export default function Home() {
           ))}
         </nav>
         <div className="topbar-right">
-          <div className="theme-toggle-segmented" role="group" aria-label="Theme selection">
-            <button
-              type="button"
-              className={`theme-segment-btn ${theme === "light" ? "active" : ""}`}
-              onClick={() => handleSetTheme("light")}
-              title="Switch to Light Mode"
-            >
-              ☀️ Light
-            </button>
-            <button
-              type="button"
-              className={`theme-segment-btn ${theme === "dark" ? "active" : ""}`}
-              onClick={() => handleSetTheme("dark")}
-              title="Switch to Dark Mode"
-            >
-              🌙 Dark
-            </button>
-          </div>
+          <button
+            type="button"
+            className="theme-toggle-single"
+            onClick={() => handleSetTheme(theme === "dark" ? "light" : "dark")}
+            title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+            aria-label={`Current theme is ${theme}. Click to switch to ${theme === "dark" ? "light" : "dark"} mode`}
+          >
+            <span className="theme-toggle-icon">{theme === "dark" ? "☀️" : "🌙"}</span>
+            <span>{theme === "dark" ? "Light Mode" : "Dark Mode"}</span>
+          </button>
           <span className="prototype-pill">Dash Journey Planner</span>
         </div>
       </header>

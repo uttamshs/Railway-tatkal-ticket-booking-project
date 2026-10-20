@@ -320,9 +320,9 @@ export function ThreeDDecisionCanvas({
       // Ultra-premium frosted platinum titanium laboratory
       const bgGrad = ctx.createRadialGradient(cx, cy * 0.6, 60, cx, cy * 0.7, Math.max(W, H) * 0.95);
       bgGrad.addColorStop(0, "#ffffff");
-      bgGrad.addColorStop(0.45, "#f8fafc");
-      bgGrad.addColorStop(0.85, "#eef2f6");
-      bgGrad.addColorStop(1, "#e2e8f0");
+      bgGrad.addColorStop(0.5, "#ffffff");
+      bgGrad.addColorStop(0.85, "#f8fafc");
+      bgGrad.addColorStop(1, "#eef2f6");
       ctx.fillStyle = bgGrad;
       ctx.fillRect(0, 0, W, H);
 
@@ -340,8 +340,8 @@ export function ThreeDDecisionCanvas({
 
     // Palette tokens
     const cageColor = isDark ? "rgba(148, 163, 184, 0.22)" : "rgba(100, 116, 139, 0.32)";
-    const gridMajor = isDark ? "rgba(56, 189, 248, 0.35)" : "rgba(37, 99, 235, 0.24)";
-    const gridMinor = isDark ? "rgba(56, 189, 248, 0.12)" : "rgba(148, 163, 184, 0.18)";
+    const gridMajor = isDark ? "rgba(56, 189, 248, 0.35)" : "rgba(30, 64, 175, 0.22)";
+    const gridMinor = isDark ? "rgba(56, 189, 248, 0.12)" : "rgba(30, 64, 175, 0.08)";
     const textPrimary = isDark ? "#f8fafc" : "#0f172a";
     const textMuted = isDark ? "rgba(148, 163, 184, 0.8)" : "#64748b";
 
@@ -928,7 +928,7 @@ export function ThreeDDecisionCanvas({
         boxShadow: isDark
           ? "0 30px 90px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.1)"
           : "0 24px 65px rgba(15, 23, 42, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.9)",
-        background: isDark ? "#02050b" : "#f8fafc",
+        background: isDark ? "#02050b" : "#ffffff",
         marginBottom: "24px",
       }}
     >
