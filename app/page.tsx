@@ -260,13 +260,14 @@ export default function Home() {
         <div className="topbar-right">
           <button
             type="button"
-            className="theme-toggle-single"
+            className={`theme-toggle-single ${theme}`}
             onClick={() => handleSetTheme(theme === "dark" ? "light" : "dark")}
-            title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
-            aria-label={`Current theme is ${theme}. Click to switch to ${theme === "dark" ? "light" : "dark"} mode`}
+            title={theme === "light" ? "Current: Light Mode (Blue). Click to switch to Dark Mode (Green)." : "Current: Dark Mode (Green). Click to switch to Light Mode (Blue)."}
+            aria-label={`Current theme is ${theme}. Click to switch theme.`}
           >
-            <span className="theme-toggle-icon">{theme === "dark" ? "☀️" : "🌙"}</span>
-            <span>{theme === "dark" ? "Light Mode" : "Dark Mode"}</span>
+            <span className="theme-toggle-dot" />
+            <span className="theme-toggle-icon">{theme === "light" ? "☀️" : "🌙"}</span>
+            <span className="theme-toggle-text">{theme === "light" ? "Light Mode" : "Dark Mode"}</span>
           </button>
           <span className="prototype-pill">Dash Journey Planner</span>
         </div>

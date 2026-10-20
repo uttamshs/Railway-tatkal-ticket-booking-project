@@ -321,13 +321,13 @@ export function ThreeDDecisionCanvas({
       const bgGrad = ctx.createRadialGradient(cx, cy * 0.6, 60, cx, cy * 0.7, Math.max(W, H) * 0.95);
       bgGrad.addColorStop(0, "#ffffff");
       bgGrad.addColorStop(0.5, "#ffffff");
-      bgGrad.addColorStop(0.85, "#f8fafc");
-      bgGrad.addColorStop(1, "#eef2f6");
+      bgGrad.addColorStop(0.85, "#f0f6ff");
+      bgGrad.addColorStop(1, "#dbeafe");
       ctx.fillStyle = bgGrad;
       ctx.fillRect(0, 0, W, H);
 
       // Subtle architectural platinum dot matrix
-      ctx.fillStyle = "rgba(148, 163, 184, 0.18)";
+      ctx.fillStyle = "rgba(37, 99, 235, 0.09)";
       const dotSpacing = 32;
       for (let x = 16; x < W; x += dotSpacing) {
         for (let y = 16; y < H; y += dotSpacing) {
@@ -339,9 +339,9 @@ export function ThreeDDecisionCanvas({
     }
 
     // Palette tokens
-    const cageColor = isDark ? "rgba(148, 163, 184, 0.22)" : "rgba(100, 116, 139, 0.32)";
-    const gridMajor = isDark ? "rgba(56, 189, 248, 0.35)" : "rgba(30, 64, 175, 0.22)";
-    const gridMinor = isDark ? "rgba(56, 189, 248, 0.12)" : "rgba(30, 64, 175, 0.08)";
+    const cageColor = isDark ? "rgba(148, 163, 184, 0.22)" : "rgba(37, 99, 235, 0.26)";
+    const gridMajor = isDark ? "rgba(56, 189, 248, 0.35)" : "rgba(37, 99, 235, 0.32)";
+    const gridMinor = isDark ? "rgba(56, 189, 248, 0.12)" : "rgba(37, 99, 235, 0.12)";
     const textPrimary = isDark ? "#f8fafc" : "#0f172a";
     const textMuted = isDark ? "rgba(148, 163, 184, 0.8)" : "#64748b";
 
@@ -924,7 +924,7 @@ export function ThreeDDecisionCanvas({
         width: "100%",
         borderRadius: "22px",
         overflow: "hidden",
-        border: isDark ? "1px solid rgba(56, 189, 248, 0.22)" : "1px solid rgba(203, 213, 225, 0.9)",
+        border: isDark ? "1px solid rgba(56, 189, 248, 0.22)" : "1.5px solid #bfdbfe",
         boxShadow: isDark
           ? "0 30px 90px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.1)"
           : "0 24px 65px rgba(15, 23, 42, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.9)",
@@ -939,7 +939,7 @@ export function ThreeDDecisionCanvas({
           alignItems: "center",
           gap: "12px",
           padding: "13px 20px",
-          borderBottom: isDark ? "1px solid rgba(56, 189, 248, 0.15)" : "1px solid rgba(226, 232, 240, 0.9)",
+          borderBottom: isDark ? "1px solid rgba(56, 189, 248, 0.15)" : "1.5px solid #dbeafe",
           background: isDark ? "rgba(8, 16, 32, 0.94)" : "rgba(255, 255, 255, 0.95)",
           backdropFilter: "blur(16px)",
           flexWrap: "wrap",
@@ -957,8 +957,8 @@ export function ThreeDDecisionCanvas({
             gap: "8px",
             padding: "4px 12px",
             borderRadius: "999px",
-            background: isDark ? "rgba(255, 255, 255, 0.05)" : "#f1f5f9",
-            border: isDark ? "1px solid rgba(255, 255, 255, 0.08)" : "1px solid #e2e8f0",
+            background: isDark ? "rgba(255, 255, 255, 0.05)" : "#f0f6ff",
+            border: isDark ? "1px solid rgba(255, 255, 255, 0.08)" : "1px solid #bfdbfe",
             fontSize: "11px",
           }}
         >
@@ -1108,10 +1108,10 @@ export function ThreeDDecisionCanvas({
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "6px", marginBottom: "12px" }}>
             <div
               style={{
-                background: isDark ? "rgba(255, 255, 255, 0.05)" : "#f1f5f9",
+                background: isDark ? "rgba(255, 255, 255, 0.05)" : "#f0f6ff",
                 borderRadius: "8px",
                 padding: "8px",
-                border: isDark ? "1px solid rgba(255, 255, 255, 0.06)" : "1px solid #e2e8f0",
+                border: isDark ? "1px solid rgba(255, 255, 255, 0.06)" : "1px solid #dbeafe",
               }}
             >
               <div style={{ fontSize: "10px", color: "#38bdf8", fontWeight: 700 }}>⏱ DURATION</div>
@@ -1119,10 +1119,10 @@ export function ThreeDDecisionCanvas({
             </div>
             <div
               style={{
-                background: isDark ? "rgba(255, 255, 255, 0.05)" : "#f1f5f9",
+                background: isDark ? "rgba(255, 255, 255, 0.05)" : "#f0f6ff",
                 borderRadius: "8px",
                 padding: "8px",
-                border: isDark ? "1px solid rgba(255, 255, 255, 0.06)" : "1px solid #e2e8f0",
+                border: isDark ? "1px solid rgba(255, 255, 255, 0.06)" : "1px solid #dbeafe",
               }}
             >
               <div style={{ fontSize: "10px", color: "#fbbf24", fontWeight: 700 }}>₹ FARE</div>
@@ -1130,10 +1130,10 @@ export function ThreeDDecisionCanvas({
             </div>
             <div
               style={{
-                background: isDark ? "rgba(255, 255, 255, 0.05)" : "#f1f5f9",
+                background: isDark ? "rgba(255, 255, 255, 0.05)" : "#f0f6ff",
                 borderRadius: "8px",
                 padding: "8px",
-                border: isDark ? "1px solid rgba(255, 255, 255, 0.06)" : "1px solid #e2e8f0",
+                border: isDark ? "1px solid rgba(255, 255, 255, 0.06)" : "1px solid #dbeafe",
               }}
             >
               <div style={{ fontSize: "10px", color: col.base, fontWeight: 700 }}>🎟 ODDS</div>
