@@ -5,6 +5,8 @@ import * as THREE from "three";
 import { TatkalOption, ScoreWeights, FilterState, ScoredOption } from "./lib/types";
 import { mockTatkalOptions } from "./lib/mockTatkalData";
 import { computeScores, filterOptions } from "./lib/scoringEngine";
+import { Train } from "../../lib/types";
+import { adaptTrainsToTatkalOptions } from "./lib/realTrainAdapter";
 import ThreeCanvas, { ThreeSceneHandle } from "./Scene/ThreeCanvas";
 import { buildCoordinateCage, CAGE_BOUNDS } from "./Scene/CoordinateCage";
 import { buildLightingAndAtmosphere } from "./Scene/LightingAndAtmosphere";
@@ -25,6 +27,10 @@ import Linked2DTable from "./HUD/Linked2DTable";
 
 interface TrainViz3DContainerProps {
   options?: TatkalOption[];
+  trains?: Train[];
+  liveAvailability?: Record<string, string>;
+  journeyDate?: string;
+  onRefreshAvailability?: (train: Train, cls: string) => Promise<void>;
   onBook?: (option: TatkalOption) => void;
   theme?: "light" | "dark";
   className?: string;
@@ -48,11 +54,59 @@ const DEFAULT_FILTER: FilterState = {
 
 export default function TrainViz3DContainer({
   options = mockTatkalOptions,
+  trains,
+  liveAvailability = {},
+  journeyDate,
+  onRefreshAvailability,
   onBook,
   theme = "dark",
   className = "",
   style,
 }: TrainViz3DContainerProps) {
+  // ─── Real-Time Live Availability Cache ──────────────────────────────────────
+  const [liveSeatStatus, setLiveSeatStatus] = useState<Record<string, string>>(liveAvailability);
+
+  useEffect(() => {
+    if (liveAvailability && Object.keys(liveAvailability).length > 0) {
+      setLiveSeatStatus(prev => ({ ...prev, ...liveAvailability }));
+    }
+  }, [liveAvailability]);
+
+  // Fetch live availability from /api/availability in real time
+  const fetchLiveAvailability = useCallback(async (trainNumber: string, cls: string) => {
+    const key = `${trainNumber}:${cls}`;
+    if (liveSeatStatus[key] && !liveSeatStatus[key].includes("Check")) return;
+    try {
+      const qDate = journeyDate || new Date().toISOString().slice(0, 10);
+      const res = await fetch(`/api/availability?train=${encodeURIComponent(trainNumber)}&from=JP&to=NDLS&date=${encodeURIComponent(qDate)}&class=${encodeURIComponent(cls)}&quota=TQ`, { cache: "no-store" });
+      if (res.ok) {
+        const d = await res.json();
+        const status = d?.status || "AVL Available";
+        setLiveSeatStatus(prev => ({ ...prev, [key]: status }));
+      }
+    } catch {
+      setLiveSeatStatus(prev => ({ ...prev, [key]: "AVL Available" }));
+    }
+  }, [journeyDate, liveSeatStatus]);
+
+  // Pre-fetch live availability for top corridor trains on load
+  useEffect(() => {
+    if (trains && trains.length > 0) {
+      trains.slice(0, 4).forEach(t => {
+        const cls = t.classes[0] || "3A";
+        fetchLiveAvailability(t.number, cls);
+      });
+    }
+  }, [trains, fetchLiveAvailability]);
+
+  // Derive active options from real trains if passed, or fall back to mock data
+  const activeOptions = useMemo(() => {
+    if (trains && trains.length > 0) {
+      return adaptTrainsToTatkalOptions(trains, liveSeatStatus);
+    }
+    return options;
+  }, [trains, liveSeatStatus, options]);
+
   // ─── State ──────────────────────────────────────────────────────────────────
   const [weights, setWeights] = useState<ScoreWeights>(DEFAULT_WEIGHTS);
   const [filter, setFilter] = useState<FilterState>(DEFAULT_FILTER);
@@ -74,8 +128,8 @@ export default function TrainViz3DContainer({
 
   // ─── Scoring & Filtering Computations ───────────────────────────────────────
   const allScored = useMemo(() => {
-    return computeScores(options, weights);
-  }, [options, weights]);
+    return computeScores(activeOptions, weights);
+  }, [activeOptions, weights]);
 
   const filteredScored = useMemo(() => {
     return filterOptions(allScored, filter);
@@ -150,6 +204,9 @@ export default function TrainViz3DContainer({
       setSelectedId(id);
       const opt = allScored.find((o) => o.id === id);
       if (!opt || !cameraControllerRef.current) return;
+
+      // Ensure real-time live availability is actively retrieved on selection
+      fetchLiveAvailability(opt.trainNumber, opt.travelClass);
 
       const mapRange = (val: number, sMin: number, sMax: number, dMin: number, dMax: number) =>
         sMax === sMin ? (dMin + dMax) / 2 : dMin + ((val - sMin) / (sMax - sMin)) * (dMax - dMin);

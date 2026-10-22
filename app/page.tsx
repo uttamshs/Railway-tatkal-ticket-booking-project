@@ -8,6 +8,7 @@ import { Stepper } from "../components/Stepper";
 import Image from "next/image";
 import { ParetoDecisionCanvas } from "../components/ParetoDecisionCanvas";
 import { ThreeDDecisionCanvas } from "../components/ThreeDDecisionCanvas";
+import { TrainViz3DContainer } from "../components/TrainViz3D";
 import { QuotaJumpingModal } from "../components/QuotaJumpingModal";
 import { AntiBotCanvasModal } from "../components/AntiBotCanvasModal";
 import { DashAICopilot } from "../components/DashAICopilot";
@@ -137,7 +138,7 @@ export default function Home() {
   const [showAdvancedLegs, setShowAdvancedLegs] = useState(false);
   
   // View Mode & Academic Visualization States (AI511 InfoVis)
-  const [viewMode, setViewMode] = useState<"dual" | "canvas" | "list" | "3d">("3d");
+  const [viewMode, setViewMode] = useState<"dual" | "canvas" | "list" | "3d" | "tatkal3d">("tatkal3d");
   const [hoveredTrainId, setHoveredTrainId] = useState<string | null>(null);
   const [quotaHackTrain, setQuotaHackTrain] = useState<Train | null>(null);
   const [appliedQuotaHack, setAppliedQuotaHack] = useState<QuotaHackOption | null>(null);
@@ -389,6 +390,15 @@ export default function Home() {
                   <div className="view-mode-toggle">
                     <button
                       type="button"
+                      className={`view-mode-btn ${viewMode === "tatkal3d" ? "active" : ""}`}
+                      onClick={() => setViewMode("tatkal3d")}
+                      title="Tatkal 3D Decision Landscape (Pareto & Multi-Objective)"
+                      style={viewMode === "tatkal3d" ? { background: "linear-gradient(135deg,rgba(16,185,129,0.25),rgba(30,64,175,0.25))", borderColor: "#10b981", color: "#6ee7b7" } : {}}
+                    >
+                      🎯 Tatkal 3D
+                    </button>
+                    <button
+                      type="button"
                       className={`view-mode-btn ${viewMode === "3d" ? "active" : ""}`}
                       onClick={() => setViewMode("3d")}
                       title="Immersive 3D Decision Space — drag to orbit, scroll to zoom"
@@ -435,6 +445,27 @@ export default function Home() {
                     {priorities.map(p => <option value={p[0]} key={p[0]}>{p[1]} - {p[2]}</option>)}
                   </select>
                 </div>
+              )}
+
+              {/* Feature A++: 3D Tatkal Decision Visualizer */}
+              {viewMode === "tatkal3d" && (
+                <TrainViz3DContainer
+                  trains={filtered}
+                  liveAvailability={live}
+                  journeyDate={date}
+                  theme={theme}
+                  onBook={(opt) => {
+                    const matched = filtered.find((t) => t.number === opt.trainNumber) || filtered[0];
+                    if (matched) {
+                      setSelected(matched);
+                      setSelectedClass(opt.travelClass);
+                      if (!live[`${matched.id}:${opt.travelClass}`]) {
+                        refreshAvailability(matched, opt.travelClass);
+                      }
+                      setStep(2);
+                    }
+                  }}
+                />
               )}
 
               {/* Feature A+: Immersive 3D Decision Space */}

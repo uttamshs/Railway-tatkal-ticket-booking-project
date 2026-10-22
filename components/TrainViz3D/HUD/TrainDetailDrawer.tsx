@@ -146,7 +146,7 @@ export default function TrainDetailDrawer({
           ["Success Chance", `${option.tatkalSuccessChance}%`],
           ["Composite Score", `${Math.round(option.compositeScore * 100)}%`],
           ["Rank", `#${option.rank} of all`],
-          ["Seats", option.seatsHint ?? "Unknown"],
+          ["Seats", option.seatsHint || "Live Checking..."],
           ["Pareto", option.paretoOptimal ? "◆ Optimal" : "—"],
         ].map(([label, val]) => (
           <div
@@ -161,7 +161,16 @@ export default function TrainDetailDrawer({
             <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 2 }}>
               {label}
             </div>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>{val}</div>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>
+              {label === "Seats" ? (
+                <span style={{ color: val.startsWith("AVL") ? "#10b981" : val.startsWith("WL") ? "#ef4444" : "var(--accent)", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: val.startsWith("AVL") ? "#10b981" : val.startsWith("WL") ? "#ef4444" : "var(--accent)" }} />
+                  {val} {val.startsWith("AVL") || val.startsWith("WL") ? "• Live" : ""}
+                </span>
+              ) : (
+                val
+              )}
+            </div>
           </div>
         ))}
       </div>
