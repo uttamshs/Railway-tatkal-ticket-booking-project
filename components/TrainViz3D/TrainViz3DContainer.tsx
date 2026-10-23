@@ -9,7 +9,7 @@ import { Train } from "../../lib/types";
 import { adaptTrainsToTatkalOptions } from "./lib/realTrainAdapter";
 import ThreeCanvas, { ThreeSceneHandle } from "./Scene/ThreeCanvas";
 import { buildCoordinateCage, CAGE_BOUNDS } from "./Scene/CoordinateCage";
-import { buildLightingAndAtmosphere } from "./Scene/LightingAndAtmosphere";
+import { buildLightingAndAtmosphere, LightingHandle } from "./Scene/LightingAndAtmosphere";
 import { CameraController } from "./Scene/CameraController";
 import {
   createTrainNodes,
@@ -122,6 +122,7 @@ export default function TrainViz3DContainer({
   // ─── Three.js Scene References ──────────────────────────────────────────────
   const sceneHandleRef = useRef<ThreeSceneHandle | null>(null);
   const cameraControllerRef = useRef<CameraController | null>(null);
+  const lightingHandleRef = useRef<LightingHandle | null>(null);
   const raycasterRef = useRef<THREE.Raycaster>(new THREE.Raycaster());
   const mouseRef = useRef<THREE.Vector2>(new THREE.Vector2(-999, -999));
   const cageGroupRef = useRef<THREE.Group | null>(null);
@@ -155,7 +156,8 @@ export default function TrainViz3DContainer({
       cameraControllerRef.current = controller;
 
       // 2. Lighting & Atmosphere
-      const lighting = buildLightingAndAtmosphere(scene);
+      const lighting = buildLightingAndAtmosphere(scene, theme);
+      lightingHandleRef.current = lighting;
       scene.add(lighting.group);
 
       // 3. Coordinate Cage & Axes
@@ -169,6 +171,29 @@ export default function TrainViz3DContainer({
     [allScored, colorblindMode, theme]
   );
 
+  // ─── Update Lighting & Cage when Theme changes ─────────────────────────────
+  useEffect(() => {
+    const handle = sceneHandleRef.current;
+    if (!handle) return;
+
+    lightingHandleRef.current?.updateTheme(theme);
+
+    if (cageGroupRef.current) {
+      handle.scene.remove(cageGroupRef.current);
+      cageGroupRef.current.traverse((child) => {
+        if ((child as THREE.Mesh).geometry) (child as THREE.Mesh).geometry.dispose();
+        if ((child as THREE.Mesh).material) {
+          const mat = (child as THREE.Mesh).material;
+          if (Array.isArray(mat)) mat.forEach(m => m.dispose());
+          else mat.dispose();
+        }
+      });
+    }
+    const newCage = buildCoordinateCage(theme);
+    cageGroupRef.current = newCage;
+    handle.scene.add(newCage);
+  }, [theme]);
+
   // ─── Rebuild Train Nodes when Scored Options or Theme changes ───────────────
   useEffect(() => {
     const handle = sceneHandleRef.current;
@@ -180,6 +205,15 @@ export default function TrainViz3DContainer({
   useEffect(() => {
     updateTrainNodes(allScored, filter, colorblindMode);
   }, [allScored, filter, colorblindMode]);
+
+  // ─── Cleanup on Unmount ─────────────────────────────────────────────────────
+  useEffect(() => {
+    return () => {
+      disposeTrainNodes();
+      lightingHandleRef.current?.dispose();
+      cameraControllerRef.current?.dispose();
+    };
+  }, []);
 
   // ─── Per-Frame Animation Loop ───────────────────────────────────────────────
   const handleAnimate = useCallback(
