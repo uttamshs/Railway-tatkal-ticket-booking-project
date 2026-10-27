@@ -1,180 +1,94 @@
 import * as THREE from "three";
+import { PALETTES, VizTheme } from "../lib/theme";
+import { VizBounds, toWorld, WORLD_MIN, WORLD_MAX } from "../lib/bounds";
+import { makeTextSprite } from "./textSprite";
 
-/** World-space extents for each axis (matches mapRange usage in TrainNodeMesh) */
-export const CAGE_BOUNDS = {
-  fareMin: 0,
-  fareMax: 4500,
-  successMin: 0,
-  successMax: 100,
-  durationMin: 3,
-  durationMax: 7,
-  worldMin: -1,
-  worldMax: 1,
-};
+const LO = WORLD_MIN;
+const HI = WORLD_MAX;
 
-const AXIS_LENGTH = 2; // total world-space length per axis (−1 to +1)
+const inr = (v: number) => `₹${v.toLocaleString("en-IN")}`;
+const hours = (v: number) => `${Number.isInteger(v) ? v : v.toFixed(1)}h`;
 
-/** Creates a CanvasTexture sprite with text label. */
-function makeTextSprite(
-  text: string,
-  options: {
-    fontSize?: number;
-    color?: string;
-    bgColor?: string;
-    padding?: number;
-  } = {}
-): THREE.Sprite {
-  const {
-    fontSize = 28,
-    color = "#e0e8ff",
-    bgColor = "rgba(0,0,0,0)",
-    padding = 8,
-  } = options;
-
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d")!;
-  ctx.font = `bold ${fontSize}px Inter, sans-serif`;
-  const measured = ctx.measureText(text);
-  const w = Math.ceil(measured.width) + padding * 2;
-  const h = fontSize + padding * 2;
-  canvas.width = w;
-  canvas.height = h;
-
-  ctx.font = `bold ${fontSize}px Inter, sans-serif`;
-  ctx.fillStyle = bgColor;
-  ctx.fillRect(0, 0, w, h);
-  ctx.fillStyle = color;
-  ctx.fillText(text, padding, fontSize + padding * 0.5 - 4);
-
-  const texture = new THREE.CanvasTexture(canvas);
-  const material = new THREE.SpriteMaterial({
-    map: texture,
-    transparent: true,
-    depthWrite: false,
-  });
-  const sprite = new THREE.Sprite(material);
-  const aspect = w / h;
-  sprite.scale.set(aspect * 0.18, 0.18, 1);
-  return sprite;
+/** One LineSegments object from flat [x1,y1,z1,x2,y2,z2,...] data. */
+function segments(points: number[], color: number, opacity: number): THREE.LineSegments {
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(points, 3));
+  const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity });
+  return new THREE.LineSegments(geo, mat);
 }
 
-/** Draws a single axis line with tick marks. */
-function buildAxis(
-  dir: THREE.Vector3,
-  color: number,
-  origin: THREE.Vector3,
-  ticks: number
-): THREE.Group {
-  const group = new THREE.Group();
-
-  // Main axis line
-  const points = [
-    origin.clone(),
-    origin.clone().add(dir.clone().multiplyScalar(AXIS_LENGTH)),
-  ];
-  const geo = new THREE.BufferGeometry().setFromPoints(points);
-  const mat = new THREE.LineBasicMaterial({ color, linewidth: 2 });
-  group.add(new THREE.Line(geo, mat));
-
-  // Tick marks
-  const tickSize = 0.04;
-  const perpA =
-    Math.abs(dir.x) < 0.9
-      ? new THREE.Vector3(1, 0, 0)
-      : new THREE.Vector3(0, 1, 0);
-  const perpB = new THREE.Vector3().crossVectors(dir, perpA).normalize();
-
-  for (let i = 0; i <= ticks; i++) {
-    const t = i / ticks;
-    const pos = origin.clone().add(dir.clone().multiplyScalar(t * AXIS_LENGTH));
-    const tickPts = [
-      pos.clone().add(perpB.clone().multiplyScalar(-tickSize)),
-      pos.clone().add(perpB.clone().multiplyScalar(tickSize)),
-    ];
-    const tGeo = new THREE.BufferGeometry().setFromPoints(tickPts);
-    const tMat = new THREE.LineBasicMaterial({
-      color,
-      transparent: true,
-      opacity: 0.6,
-    });
-    group.add(new THREE.Line(tGeo, tMat));
-  }
-
-  return group;
-}
-
-/** Builds the entire coordinate cage, grid, and axis labels. Returns a Group. */
-export function buildCoordinateCage(theme: "light" | "dark"): THREE.Group {
+/**
+ * Builds the coordinate cage for the current data bounds and theme:
+ *  - tick-aligned grid lines on the floor and the two far walls
+ *  - three labelled axes on the NEAR edges (visible from the default view)
+ *  - tick value labels at every tick + an axis title
+ *
+ * X = Fare (₹), Y = Tatkal success (%), Z = Duration (h).
+ */
+export function buildCoordinateCage(theme: VizTheme, bounds: VizBounds): THREE.Group {
+  const p = PALETTES[theme];
   const root = new THREE.Group();
   root.name = "CoordinateCage";
 
-  const labelColor = theme === "dark" ? "#c8d8ff" : "#334466";
-  const gridColor = theme === "dark" ? 0x334466 : 0x99aacc;
-  const origin = new THREE.Vector3(-1, -1, -1);
+  const fx = bounds.fareTicks.map((v) => toWorld(v, bounds.fareMin, bounds.fareMax));
+  const sy = bounds.successTicks.map((v) => toWorld(v, bounds.successMin, bounds.successMax));
+  const dz = bounds.durationTicks.map((v) => toWorld(v, bounds.durationMin, bounds.durationMax));
 
-  // ── Axis lines ────────────────────────────────────────────────────────
-  // X = Fare (red), Y = Success (green), Z = Duration (blue)
-  const xAxis = buildAxis(new THREE.Vector3(1, 0, 0), 0xff4444, origin, 4);
-  const yAxis = buildAxis(new THREE.Vector3(0, 1, 0), 0x44ff88, origin, 5);
-  const zAxis = buildAxis(new THREE.Vector3(0, 0, 1), 0x4488ff, origin, 4);
+  // ── Grid planes (far walls + floor) ─────────────────────────────────────
+  const floor: number[] = [];
+  fx.forEach((x) => floor.push(x, LO, LO, x, LO, HI));
+  dz.forEach((z) => floor.push(LO, LO, z, HI, LO, z));
+  root.add(segments(floor, p.gridColor, 0.38));
 
-  root.add(xAxis, yAxis, zAxis);
+  const backWall: number[] = []; // z = LO plane (X–Y)
+  fx.forEach((x) => backWall.push(x, LO, LO, x, HI, LO));
+  sy.forEach((y) => backWall.push(LO, y, LO, HI, y, LO));
+  root.add(segments(backWall, p.gridColor, 0.22));
 
-  // ── Floor grid (XZ plane at Y = -1) ──────────────────────────────────
-  const gridLines = 10;
-  const step = AXIS_LENGTH / gridLines;
-  const gridMat = new THREE.LineBasicMaterial({
-    color: gridColor,
-    transparent: true,
-    opacity: 0.15,
+  const leftWall: number[] = []; // x = LO plane (Z–Y)
+  dz.forEach((z) => leftWall.push(LO, LO, z, LO, HI, z));
+  sy.forEach((y) => leftWall.push(LO, y, LO, LO, y, HI));
+  root.add(segments(leftWall, p.gridColor, 0.22));
+
+  // ── Axes on the near edges ──────────────────────────────────────────────
+  root.add(segments([LO, LO, HI, HI, LO, HI], p.axisFare, 1)); // X: fare
+  root.add(segments([LO, LO, HI, LO, HI, HI], p.axisSuccess, 1)); // Y: success
+  root.add(segments([HI, LO, HI, HI, LO, LO], p.axisDuration, 1)); // Z: duration
+
+  // ── Tick labels ─────────────────────────────────────────────────────────
+  const hex = (n: number) => `#${n.toString(16).padStart(6, "0")}`;
+  const tickStyle = { fontPx: 22, color: p.labelText, worldHeight: 0.07, bold: false, onTop: true } as const;
+
+  bounds.fareTicks.forEach((v, i) => {
+    const s = makeTextSprite(inr(v), tickStyle);
+    s.position.set(fx[i], LO - 0.1, HI + 0.12);
+    root.add(s);
+  });
+  bounds.successTicks.forEach((v, i) => {
+    const s = makeTextSprite(`${v}%`, tickStyle);
+    s.position.set(LO - 0.14, sy[i], HI + 0.02);
+    root.add(s);
+  });
+  bounds.durationTicks.forEach((v, i) => {
+    const s = makeTextSprite(hours(v), tickStyle);
+    s.position.set(HI + 0.14, LO - 0.1, dz[i]);
+    root.add(s);
   });
 
-  for (let i = 0; i <= gridLines; i++) {
-    const t = -1 + i * step;
+  // ── Axis titles ─────────────────────────────────────────────────────────
+  const titleStyle = { fontPx: 26, worldHeight: 0.095, onTop: true } as const;
 
-    // Lines parallel to Z
-    const p1 = [new THREE.Vector3(-1, -1, t), new THREE.Vector3(1, -1, t)];
-    const g1 = new THREE.BufferGeometry().setFromPoints(p1);
-    root.add(new THREE.Line(g1, gridMat.clone()));
+  const fareTitle = makeTextSprite("Fare (₹)  →", { ...titleStyle, color: hex(p.axisFare) });
+  fareTitle.position.set(0, LO - 0.26, HI + 0.2);
+  root.add(fareTitle);
 
-    // Lines parallel to X
-    const p2 = [new THREE.Vector3(t, -1, -1), new THREE.Vector3(t, -1, 1)];
-    const g2 = new THREE.BufferGeometry().setFromPoints(p2);
-    root.add(new THREE.Line(g2, gridMat.clone()));
-  }
+  const successTitle = makeTextSprite("Tatkal success (%)  ↑", { ...titleStyle, color: hex(p.axisSuccess) });
+  successTitle.position.set(LO - 0.12, HI + 0.16, HI);
+  root.add(successTitle);
 
-  // ── Axis label sprites ────────────────────────────────────────────────
-  // X (Fare) label — at end of X axis
-  const fareLabel = makeTextSprite("Fare (₹0–₹4500)", { color: labelColor, fontSize: 24 });
-  fareLabel.position.set(1.25, -1, -1);
-  root.add(fareLabel);
-
-  // Y (Success) label — at top of Y axis
-  const successLabel = makeTextSprite("Success (0–100%)", { color: labelColor, fontSize: 24 });
-  successLabel.position.set(-1, 1.25, -1);
-  root.add(successLabel);
-
-  // Z (Duration) label — at end of Z axis
-  const durationLabel = makeTextSprite("Duration (3–7h)", { color: labelColor, fontSize: 24 });
-  durationLabel.position.set(-1, -1, 1.25);
-  root.add(durationLabel);
-
-  // ── Origin corner tick labels ─────────────────────────────────────────
-  const fareMinLabel = makeTextSprite("₹0", { color: labelColor, fontSize: 18 });
-  fareMinLabel.position.set(-1, -1.2, -1);
-  root.add(fareMinLabel);
-
-  const fareMaxLabel = makeTextSprite("₹4500", { color: labelColor, fontSize: 18 });
-  fareMaxLabel.position.set(1, -1.2, -1);
-  root.add(fareMaxLabel);
-
-  const durMinLabel = makeTextSprite("3h", { color: labelColor, fontSize: 18 });
-  durMinLabel.position.set(-1.15, -1.2, -1);
-  root.add(durMinLabel);
-
-  const durMaxLabel = makeTextSprite("7h", { color: labelColor, fontSize: 18 });
-  durMaxLabel.position.set(-1.15, -1.2, 1);
-  root.add(durMaxLabel);
+  const durationTitle = makeTextSprite("Duration (h)  →", { ...titleStyle, color: hex(p.axisDuration) });
+  durationTitle.position.set(HI + 0.3, LO - 0.26, 0);
+  root.add(durationTitle);
 
   return root;
 }

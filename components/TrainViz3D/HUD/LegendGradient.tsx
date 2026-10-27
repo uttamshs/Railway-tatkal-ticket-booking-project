@@ -1,68 +1,66 @@
 "use client";
 
+import { VizTheme, legendGradient, glassPanel } from "../lib/theme";
+import { btnBase, btnActive } from "./ui";
+import { Icon } from "./icons";
+import { LabelMode } from "../Scene/TrainNodeLayer";
+
 interface LegendGradientProps {
+  theme: VizTheme;
   colorblindMode: boolean;
   onToggleColorblind: () => void;
+  labelMode: LabelMode;
+  onToggleLabels: () => void;
 }
 
+/** Colour ramp + a key for every redundant encoding (never colour alone). */
 export default function LegendGradient({
+  theme,
   colorblindMode,
   onToggleColorblind,
+  labelMode,
+  onToggleLabels,
 }: LegendGradientProps) {
-  const gradient = colorblindMode
-    ? "linear-gradient(to right, #440154, #31688e, #35b779, #90d743, #fde725)"
-    : "linear-gradient(to right, #ff2200, #ffaa00, #00ff88)";
-
   return (
-    <div
-      style={{
-        background: "rgba(14,24,34,0.85)",
-        backdropFilter: "blur(16px)",
-        WebkitBackdropFilter: "blur(16px)",
-        border: "1px solid var(--line)",
-        borderRadius: 12,
-        padding: "10px 16px",
-        color: "var(--text)",
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-      }}
-    >
-      <span style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>
-        Worst
-      </span>
-      <div
-        style={{
-          flex: 1,
-          height: 10,
-          borderRadius: 99,
-          background: gradient,
-          border: "1px solid rgba(255,255,255,0.1)",
-        }}
-      />
-      <span style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>
-        Best
-      </span>
-      <button
-        onClick={onToggleColorblind}
-        title={colorblindMode ? "Switch to standard colors" : "Switch to colorblind-safe (Viridis)"}
-        style={{
-          marginLeft: 8,
-          background: colorblindMode
-            ? "var(--accent)"
-            : "rgba(255,255,255,0.06)",
-          border: "1px solid var(--line)",
-          borderRadius: 8,
-          padding: "4px 10px",
-          fontSize: 11,
-          color: colorblindMode ? "#fff" : "var(--muted)",
-          cursor: "pointer",
-          whiteSpace: "nowrap",
-          transition: "all 0.15s",
-        }}
-      >
-        {colorblindMode ? "👁 Viridis ON" : "👁 Colorblind"}
-      </button>
+    <div style={{ ...glassPanel, borderRadius: 12, padding: "8px 14px", display: "grid", gap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ fontSize: 11, color: "var(--viz-muted)", whiteSpace: "nowrap" }}>Worst</span>
+        <div
+          role="img"
+          aria-label={colorblindMode ? "Colour scale from purple (worst) through teal to yellow (best)" : "Colour scale from red (worst) through amber to green (best)"}
+          style={{ flex: 1, height: 10, borderRadius: 99, background: legendGradient(colorblindMode, theme), border: "1px solid var(--viz-line)", minWidth: 80 }}
+        />
+        <span style={{ fontSize: 11, color: "var(--viz-muted)", whiteSpace: "nowrap" }}>Best</span>
+        <button
+          type="button"
+          className="tv3d-btn"
+          data-active={colorblindMode}
+          aria-pressed={colorblindMode}
+          title="Colour-blind-safe palette (blue → yellow)"
+          onClick={onToggleColorblind}
+          style={{ ...btnBase, ...(colorblindMode ? btnActive : {}), padding: "3px 9px", fontSize: 11, minHeight: 26 }}
+        >
+          <Icon name="eye" size={12} /> {colorblindMode ? "Colour-blind safe" : "Colour-blind"}
+        </button>
+        <button
+          type="button"
+          className="tv3d-btn"
+          data-active={labelMode === "all"}
+          aria-pressed={labelMode === "all"}
+          title="Show every marker label, not just the key ones"
+          onClick={onToggleLabels}
+          style={{ ...btnBase, ...(labelMode === "all" ? btnActive : {}), padding: "3px 9px", fontSize: 11, minHeight: 26 }}
+        >
+          <Icon name="tag" size={12} /> All labels
+        </button>
+      </div>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 11, color: "var(--viz-muted)" }}>
+        <span>● size = overall score</span>
+        <span style={{ color: "var(--viz-pareto)", fontWeight: 600 }}>◯ ring = Pareto-optimal</span>
+        <span>#1–3 = top picks</span>
+        <span>│ whisker = success-% uncertainty</span>
+        <span>◔ faded = estimate, not live</span>
+      </div>
     </div>
   );
 }

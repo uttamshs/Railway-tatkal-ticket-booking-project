@@ -5,6 +5,10 @@ import {
   filterOptions,
 } from "./scoringEngine";
 import { TatkalOption, ScoreWeights, FilterState } from "./types";
+import { PALETTES, contrastRatio } from "./theme";
+import { parseSeatStatus, estimateSuccess } from "./successModel";
+import { computeBounds } from "./bounds";
+import { rebalance } from "../HUD/WeightSliderPanel";
 
 const MOCK_OPTIONS: TatkalOption[] = [
   {
@@ -16,12 +20,19 @@ const MOCK_OPTIONS: TatkalOption[] = [
     departureTime: "06:00",
     arrivalTime: "10:30",
     fare: 1500,
+    fareBasis: "live",
     duration: 4.5,
     tatkalSuccessChance: 85,
+    successBasis: "live",
+    successNote: "42 seats confirmed available (live check).",
+    seatsHint: "AVL 42",
     tatkalOpenTime: "10:00",
-    fromStation: "JP",
-    toStation: "NDLS",
+    fromStation: "Jaipur Junction",
+    fromCode: "JP",
+    toStation: "New Delhi",
+    toCode: "NDLS",
     amenities: ["AC"],
+    timetableIsDemo: false,
   },
   {
     id: "T2",
@@ -32,12 +43,19 @@ const MOCK_OPTIONS: TatkalOption[] = [
     departureTime: "07:00",
     arrivalTime: "11:45",
     fare: 900,
+    fareBasis: "live",
     duration: 4.75,
     tatkalSuccessChance: 70,
+    successBasis: "live",
+    successNote: "12 seats confirmed available (live check).",
+    seatsHint: "AVL 12",
     tatkalOpenTime: "10:00",
-    fromStation: "JP",
-    toStation: "NDLS",
+    fromStation: "Jaipur Junction",
+    fromCode: "JP",
+    toStation: "New Delhi",
+    toCode: "NDLS",
     amenities: ["AC"],
+    timetableIsDemo: false,
   },
   {
     id: "T3",
@@ -48,12 +66,19 @@ const MOCK_OPTIONS: TatkalOption[] = [
     departureTime: "08:00",
     arrivalTime: "14:00",
     fare: 400,
+    fareBasis: "estimated",
     duration: 6.0,
     tatkalSuccessChance: 90,
+    successBasis: "baseline",
+    successNote: "80 seats confirmed available (timetable baseline).",
+    seatsHint: "AVL 80",
     tatkalOpenTime: "11:00",
-    fromStation: "JP",
-    toStation: "NDLS",
+    fromStation: "Jaipur Junction",
+    fromCode: "JP",
+    toStation: "New Delhi",
+    toCode: "NDLS",
     amenities: ["Fan"],
+    timetableIsDemo: false,
   },
   {
     id: "T4", // Dominated option: expensive, slow, low chance
@@ -64,12 +89,19 @@ const MOCK_OPTIONS: TatkalOption[] = [
     departureTime: "09:00",
     arrivalTime: "16:00",
     fare: 2000,
+    fareBasis: "estimated",
     duration: 7.0,
     tatkalSuccessChance: 20,
+    successBasis: "estimate",
+    successNote: "Waitlist 45.",
+    seatsHint: "WL 45",
     tatkalOpenTime: "11:00",
-    fromStation: "JP",
-    toStation: "NDLS",
+    fromStation: "Jaipur Junction",
+    fromCode: "JP",
+    toStation: "New Delhi",
+    toCode: "NDLS",
     amenities: [],
+    timetableIsDemo: false,
   },
 ];
 
@@ -123,6 +155,33 @@ export function runTests(): boolean {
   assert("Filtering by class 3A/CC returns only matching trains", filtered.every((f) => f.travelClass === "3A" || f.travelClass === "CC"));
   assert("Filtering excluded SL class", !filtered.some((f) => f.travelClass === "SL"));
 
-  console.log(`ScoringEngine tests: ${passed} passed, ${failed} failed.`);
+  // Test 6: WCAG AA Theme Contrast Checks (>= 4.5:1)
+  for (const [mode, p] of Object.entries(PALETTES)) {
+    const textOnPanel = contrastRatio(p.text, p.panelSolid);
+    const mutedOnPanel = contrastRatio(p.muted, p.panelSolid);
+    const onAccentRatio = contrastRatio(p.onAccent, p.accent);
+    assert(`${mode}: text on panelSolid >= 4.5 (got ${textOnPanel.toFixed(2)})`, textOnPanel >= 4.5);
+    assert(`${mode}: muted on panelSolid >= 4.5 (got ${mutedOnPanel.toFixed(2)})`, mutedOnPanel >= 4.5);
+    assert(`${mode}: onAccent on accent >= 4.5 (got ${onAccentRatio.toFixed(2)})`, onAccentRatio >= 4.5);
+  }
+
+  // Test 7: Seat status parser & success estimator
+  const avl = parseSeatStatus("AVL 48");
+  assert("Parses AVL 48", avl.kind === "avl" && avl.n === 48);
+  const rac = parseSeatStatus("RAC 14/RAC 9");
+  assert("Parses RAC 14/RAC 9", rac.kind === "rac" && rac.n === 14);
+  const wl = parseSeatStatus("GNWL 32/WL 18");
+  assert("Parses GNWL 32/WL 18 (takes current 18)", wl.kind === "wl" && wl.n === 18);
+  const estLive = estimateSuccess("AVL 48", "live", "3A");
+  assert("Live AVL 48 gives high chance and live basis", estLive !== null && estLive.chance >= 75 && estLive.basis === "live");
+
+  // Test 8: Dynamic bounds & Weight rebalancer
+  const b = computeBounds(MOCK_OPTIONS);
+  assert("Bounds cover fare range", b.fareMin <= 400 && b.fareMax >= 2000);
+  const reb = rebalance({ success: 0.5, fare: 0.25, duration: 0.25 }, "success", 0.8);
+  const sum = reb.success + reb.fare + reb.duration;
+  assert("Rebalanced weights sum to 1.0", Math.abs(sum - 1.0) < 1e-6);
+
+  console.log(`ScoringEngine & Theme tests: ${passed} passed, ${failed} failed.`);
   return failed === 0;
 }

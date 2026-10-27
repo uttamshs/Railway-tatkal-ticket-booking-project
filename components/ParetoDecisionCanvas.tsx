@@ -318,7 +318,7 @@ export function ParetoDecisionCanvas({
               fontSize: "11.5px",
               fontWeight: 700,
               background: showFilters || isFiltered ? "var(--accent)" : "var(--panel2)",
-              color: showFilters || isFiltered ? "var(--bg)" : "var(--text)",
+              color: showFilters || isFiltered ? "var(--on-accent)" : "var(--text)",
               border: "1px solid var(--line)",
               display: "inline-flex",
               alignItems: "center",
@@ -896,10 +896,11 @@ export function ParetoDecisionCanvas({
               width: "285px",
               padding: "16px",
               borderRadius: "14px",
-              background: "rgba(15, 23, 42, 0.92)",
+              background: "var(--panel)",
+              color: "var(--text)",
               backdropFilter: "blur(14px)",
               border: "1.5px solid var(--accent)",
-              boxShadow: "0 20px 40px -10px rgba(0, 0, 0, 0.5), 0 0 20px rgba(14, 165, 233, 0.2)",
+              boxShadow: "var(--shadow)",
               animation: "fadeIn 0.2s ease-out"
             }}
           >
@@ -921,7 +922,7 @@ export function ParetoDecisionCanvas({
                   whiteSpace: "nowrap",
                   background:
                     activeHoverPoint.probability >= 80 ? "#10b981" : activeHoverPoint.probability >= 50 ? "#f59e0b" : "#ef4444",
-                  color: "#ffffff"
+                  color: activeHoverPoint.probability >= 50 ? "#05261a" : "#ffffff"
                 }}
               >
                 {activeHoverPoint.probability}% Clearance
@@ -935,7 +936,7 @@ export function ParetoDecisionCanvas({
                   alignItems: "center",
                   gap: "4px",
                   fontSize: "11px",
-                  color: "#38bdf8",
+                  color: "var(--accent)",
                   fontWeight: 700,
                   marginBottom: "8px"
                 }}
@@ -952,7 +953,8 @@ export function ParetoDecisionCanvas({
                 gridTemplateColumns: "1fr 1fr",
                 gap: "8px",
                 padding: "8px 10px",
-                background: "rgba(255, 255, 255, 0.05)",
+                background: "var(--panel2)",
+                border: "1px solid var(--line)",
                 borderRadius: "8px",
                 marginBottom: "10px",
                 fontSize: "12px"
@@ -960,7 +962,7 @@ export function ParetoDecisionCanvas({
             >
               <div>
                 <span style={{ color: "var(--muted)", fontSize: "10px", display: "block" }}>SCHEDULE</span>
-                <strong style={{ color: "#f8fafc" }}>
+                <strong style={{ color: "var(--text)" }}>
                   {activeHoverPoint.train.departure} → {activeHoverPoint.train.arrival}
                 </strong>
                 <span style={{ color: "var(--muted)", fontSize: "10.5px", display: "block" }}>
@@ -985,7 +987,7 @@ export function ParetoDecisionCanvas({
                 alignItems: "flex-start",
                 gap: "6px",
                 fontSize: "11.5px",
-                color: "#e2e8f0",
+                color: "var(--muted)",
                 lineHeight: "1.4",
                 marginBottom: "12px"
               }}
@@ -1005,7 +1007,7 @@ export function ParetoDecisionCanvas({
                 fontWeight: 800,
                 borderRadius: "8px",
                 background: "var(--accent)",
-                color: "var(--bg)",
+                color: "var(--on-accent)",
                 border: "none",
                 cursor: "pointer"
               }}

@@ -271,14 +271,22 @@ export default function Home() {
         <div className="topbar-right">
           <button
             type="button"
-            className={`theme-toggle-single ${theme}`}
+            role="switch"
+            aria-checked={theme === "dark"}
+            className={`theme-switch ${theme === "dark" ? "is-dark" : "is-light"}`}
             onClick={() => handleSetTheme(theme === "dark" ? "light" : "dark")}
-            title={theme === "light" ? "Current: Light Mode (Blue). Click to switch to Dark Mode (Green)." : "Current: Dark Mode (Green). Click to switch to Light Mode (Blue)."}
-            aria-label={`Current theme is ${theme}. Click to switch theme.`}
+            title={theme === "light" ? "Light theme active — click to switch to Dark theme" : "Dark theme active — click to switch to Light theme"}
+            aria-label={`Theme switch, currently ${theme} mode`}
           >
-            <span className="theme-toggle-dot" />
-            <span className="theme-toggle-icon">{theme === "light" ? "☀️" : "🌙"}</span>
-            <span className="theme-toggle-text">{theme === "light" ? "Light Mode" : "Dark Mode"}</span>
+            <span className="theme-switch-thumb" aria-hidden="true" />
+            <span className="theme-switch-side side-light">
+              <span className="theme-switch-symbol" aria-hidden="true">☀️</span>
+              <span>Light</span>
+            </span>
+            <span className="theme-switch-side side-dark">
+              <span className="theme-switch-symbol" aria-hidden="true">🌙</span>
+              <span>Dark</span>
+            </span>
           </button>
           <span className="prototype-pill">Dash Journey Planner</span>
         </div>
@@ -393,7 +401,15 @@ export default function Home() {
                       className={`view-mode-btn ${viewMode === "tatkal3d" ? "active" : ""}`}
                       onClick={() => setViewMode("tatkal3d")}
                       title="Tatkal 3D Decision Landscape (Pareto & Multi-Objective)"
-                      style={viewMode === "tatkal3d" ? { background: "linear-gradient(135deg,rgba(16,185,129,0.25),rgba(30,64,175,0.25))", borderColor: "#10b981", color: "#6ee7b7" } : {}}
+                      style={
+                        viewMode === "tatkal3d"
+                          ? {
+                              background: "var(--accent)",
+                              borderColor: "var(--accent)",
+                              color: "var(--on-accent)",
+                            }
+                          : {}
+                      }
                     >
                       🎯 Tatkal 3D
                     </button>
@@ -402,7 +418,15 @@ export default function Home() {
                       className={`view-mode-btn ${viewMode === "3d" ? "active" : ""}`}
                       onClick={() => setViewMode("3d")}
                       title="Immersive 3D Decision Space — drag to orbit, scroll to zoom"
-                      style={viewMode === "3d" ? { background: "linear-gradient(135deg,rgba(139,92,246,0.25),rgba(30,64,175,0.2))", borderColor: "rgba(139,92,246,0.6)", color: "#c4b5fd" } : {}}
+                      style={
+                        viewMode === "3d"
+                          ? {
+                              background: "var(--accent)",
+                              borderColor: "var(--accent)",
+                              color: "var(--on-accent)",
+                            }
+                          : {}
+                      }
                     >
                       🌐 3D Space
                     </button>
@@ -558,7 +582,7 @@ export default function Home() {
                             const isLive = Boolean(value && !value.startsWith("Demo") && value !== "Check");
                             const isSelected = selectedClass === c && selected?.id === train.id;
                             return (
-                              <button key={c} style={{ padding: "6px 12px", background: isSelected ? "var(--accent)" : "var(--panel2)", color: isSelected ? "var(--bg)" : "var(--text)", borderRadius: "8px", border: isLive ? "1px solid #10b981" : "1px solid var(--line)" }} onClick={() => { setSelected(train); setSelectedClass(c); refreshAvailability(train, c); }}>
+                              <button key={c} style={{ padding: "6px 12px", background: isSelected ? "var(--accent)" : "var(--panel2)", color: isSelected ? "var(--on-accent)" : "var(--text)", borderRadius: "8px", border: isLive ? "1px solid #10b981" : "1px solid var(--line)" }} onClick={() => { setSelected(train); setSelectedClass(c); refreshAvailability(train, c); }}>
                                 <span>{c}</span>
                                 <small style={{ display: "block", fontSize: "10px", marginTop: "2px", color: isLive ? (isSelected ? "inherit" : "#10b981") : undefined, fontWeight: isLive ? 600 : undefined }}>{busy ? "Checking…" : value || "Check"}</small>
                               </button>

@@ -1,22 +1,21 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { TatkalOption, ScoreWeights, FilterState, ScoredOption } from "./lib/types";
-import { mockTatkalOptions } from "./lib/mockTatkalData";
-import { computeScores, filterOptions } from "./lib/scoringEngine";
 import { Train } from "../../lib/types";
-import { adaptTrainsToTatkalOptions } from "./lib/realTrainAdapter";
+import { DataBasis, FilterState, ScoreWeights, TatkalOption, TravelClass } from "./lib/types";
+import { computeScores, filterOptions } from "./lib/scoringEngine";
+import { adaptTrains } from "./lib/realTrainAdapter";
+import { boundsKey, computeBounds } from "./lib/bounds";
+import { glassPanel, vizCssVars, VizTheme } from "./lib/theme";
+import { useLiveSeats, SeatRequest } from "./lib/useLiveSeats";
+import { useMediaQuery } from "./lib/useMediaQuery";
 import ThreeCanvas, { ThreeSceneHandle } from "./Scene/ThreeCanvas";
-import { buildCoordinateCage, CAGE_BOUNDS } from "./Scene/CoordinateCage";
+import { buildCoordinateCage } from "./Scene/CoordinateCage";
 import { buildLightingAndAtmosphere, LightingHandle } from "./Scene/LightingAndAtmosphere";
-import { CameraController } from "./Scene/CameraController";
-import {
-  createTrainNodes,
-  updateTrainNodes,
-  animateTrainNodes,
-  disposeTrainNodes,
-} from "./Scene/TrainNodeMesh";
+import { CameraController, CameraPreset } from "./Scene/CameraController";
+import { LabelMode, TrainNodeLayer } from "./Scene/TrainNodeLayer";
+import { disposeObject } from "./Scene/dispose";
 
 import BestPickCard from "./HUD/BestPickCard";
 import WeightSliderPanel from "./HUD/WeightSliderPanel";
@@ -24,626 +23,591 @@ import FilterToolbar from "./HUD/FilterToolbar";
 import LegendGradient from "./HUD/LegendGradient";
 import TrainDetailDrawer from "./HUD/TrainDetailDrawer";
 import Linked2DTable from "./HUD/Linked2DTable";
+import DataStatusBar from "./HUD/DataStatusBar";
+import { BasisBadge } from "./HUD/BasisBadge";
+import { MessageState, SceneSkeleton } from "./HUD/States";
+import { Icon, IconName } from "./HUD/icons";
+import { VIZ_CSS, btnBase, btnActive } from "./HUD/ui";
 
 interface TrainViz3DContainerProps {
-  options?: TatkalOption[];
-  trains?: Train[];
+  /** Trains for the chosen route (real search results). */
+  trains: Train[];
+  /** Optional parent-managed live availability map (for backwards compatibility). */
   liveAvailability?: Record<string, string>;
+  /** ISO journey date, e.g. "2026-10-28". */
   journeyDate?: string;
-  onRefreshAvailability?: (train: Train, cls: string) => Promise<void>;
-  onBook?: (option: TatkalOption) => void;
-  theme?: "light" | "dark";
+  theme: VizTheme;
+  /** Called when the user chooses "Book Tatkal now". */
+  onBook: (option: TatkalOption) => void;
   className?: string;
   style?: React.CSSProperties;
 }
 
-const DEFAULT_WEIGHTS: ScoreWeights = {
-  success: 0.5,
-  fare: 0.25,
-  duration: 0.25,
-};
+type ViewTab = "3d" | "split" | "table";
 
-const DEFAULT_FILTER: FilterState = {
-  classes: new Set(),
-  maxFare: 4500,
-  minSuccessChance: 0,
-  maxDuration: 7.5,
-  departureAfter: "00:00",
-  departureBefore: "23:59",
-};
+const DEFAULT_WEIGHTS: ScoreWeights = { success: 0.5, fare: 0.25, duration: 0.25 };
+const PREFETCH_COUNT = 10;
+const CLICK_SLOP_PX = 5;
+
+const VIEW_TABS: { id: ViewTab; label: string; icon: IconName }[] = [
+  { id: "3d", label: "3D", icon: "cube" },
+  { id: "split", label: "Split", icon: "split" },
+  { id: "table", label: "List", icon: "list" },
+];
+
+const PRESETS: { id: CameraPreset; label: string }[] = [
+  { id: "reset", label: "Reset" },
+  { id: "top", label: "Top" },
+  { id: "front", label: "Front" },
+  { id: "side", label: "Side" },
+];
+
+const toggleBtn = (active: boolean): React.CSSProperties => ({ ...btnBase, ...(active ? btnActive : {}) });
+
+function formatJourneyDate(iso?: string): string {
+  const m = iso?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return "";
+  const d = new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+}
 
 export default function TrainViz3DContainer({
-  options = mockTatkalOptions,
   trains,
-  liveAvailability = {},
   journeyDate,
-  onRefreshAvailability,
+  theme,
   onBook,
-  theme = "dark",
   className = "",
   style,
 }: TrainViz3DContainerProps) {
-  // ─── Real-Time Live Availability Cache ──────────────────────────────────────
-  const [liveSeatStatus, setLiveSeatStatus] = useState<Record<string, string>>(liveAvailability);
+  // ─── Data pipeline: real trains + real seat reads → options ────────────────
+  const { seats, pending, failed, request } = useLiveSeats(journeyDate);
+  const { options, excluded } = useMemo(() => adaptTrains(trains, seats), [trains, seats]);
 
-  useEffect(() => {
-    if (liveAvailability && Object.keys(liveAvailability).length > 0) {
-      setLiveSeatStatus(prev => ({ ...prev, ...liveAvailability }));
-    }
-  }, [liveAvailability]);
+  const rawBounds = useMemo(() => computeBounds(options), [options]);
+  const bKey = boundsKey(rawBounds);
+  // Only rebuild the cage when the geometry actually changes, not on every seat read.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const bounds = useMemo(() => rawBounds, [bKey]);
 
-  // Fetch live availability from /api/availability in real time
-  const fetchLiveAvailability = useCallback(async (trainNumber: string, cls: string) => {
-    const key = `${trainNumber}:${cls}`;
-    if (liveSeatStatus[key] && !liveSeatStatus[key].includes("Check")) return;
-    try {
-      const qDate = journeyDate || new Date().toISOString().slice(0, 10);
-      const res = await fetch(`/api/availability?train=${encodeURIComponent(trainNumber)}&from=JP&to=NDLS&date=${encodeURIComponent(qDate)}&class=${encodeURIComponent(cls)}&quota=TQ`, { cache: "no-store" });
-      if (res.ok) {
-        const d = await res.json();
-        const status = d?.status || "AVL Available";
-        setLiveSeatStatus(prev => ({ ...prev, [key]: status }));
-      }
-    } catch {
-      setLiveSeatStatus(prev => ({ ...prev, [key]: "AVL Available" }));
-    }
-  }, [journeyDate, liveSeatStatus]);
-
-  // Pre-fetch live availability for top corridor trains on load
-  useEffect(() => {
-    if (trains && trains.length > 0) {
-      trains.slice(0, 4).forEach(t => {
-        const cls = t.classes[0] || "3A";
-        fetchLiveAvailability(t.number, cls);
-      });
-    }
-  }, [trains, fetchLiveAvailability]);
-
-  // Derive active options from real trains if passed, or fall back to mock data
-  const activeOptions = useMemo(() => {
-    if (trains && trains.length > 0) {
-      return adaptTrainsToTatkalOptions(trains, liveSeatStatus);
-    }
-    return options;
-  }, [trains, liveSeatStatus, options]);
-
-  // ─── State ──────────────────────────────────────────────────────────────────
+  // ─── UI state ───────────────────────────────────────────────────────────────
   const [weights, setWeights] = useState<ScoreWeights>(DEFAULT_WEIGHTS);
-  const [filter, setFilter] = useState<FilterState>(DEFAULT_FILTER);
+  const [filterOverride, setFilterOverride] = useState<FilterState | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const [colorblindMode, setColorblindMode] = useState<boolean>(false);
-  const [viewTab, setViewTab] = useState<"3d" | "split" | "table">("3d");
-  const [autoRotate, setAutoRotate] = useState<boolean>(false);
-  const [activePreset, setActivePreset] = useState<string>("iso");
-  const [showFilters, setShowFilters] = useState<boolean>(true);
-  const [showWeights, setShowWeights] = useState<boolean>(false);
+  const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
+  const [colorblind, setColorblind] = useState(false);
+  const [labelMode, setLabelMode] = useState<LabelMode>("key");
+  const [viewTab, setViewTab] = useState<ViewTab>("3d");
+  const [autoRotate, setAutoRotate] = useState(false);
+  const [activePreset, setActivePreset] = useState<CameraPreset | null>("reset");
+  const [showFilters, setShowFilters] = useState(false);
+  const [showWeights, setShowWeights] = useState(false);
+  const [sceneHandle, setSceneHandle] = useState<ThreeSceneHandle | null>(null);
+  const [sceneError, setSceneError] = useState<string | null>(null);
+  const [sceneKey, setSceneKey] = useState(0);
 
-  // ─── Three.js Scene References ──────────────────────────────────────────────
-  const sceneHandleRef = useRef<ThreeSceneHandle | null>(null);
-  const cameraControllerRef = useRef<CameraController | null>(null);
-  const lightingHandleRef = useRef<LightingHandle | null>(null);
-  const raycasterRef = useRef<THREE.Raycaster>(new THREE.Raycaster());
-  const mouseRef = useRef<THREE.Vector2>(new THREE.Vector2(-999, -999));
-  const cageGroupRef = useRef<THREE.Group | null>(null);
+  const isNarrow = useMediaQuery("(max-width: 860px)");
 
-  // ─── Scoring & Filtering Computations ───────────────────────────────────────
-  const allScored = useMemo(() => {
-    return computeScores(activeOptions, weights);
-  }, [activeOptions, weights]);
+  // ─── Scoring & filtering ────────────────────────────────────────────────────
+  const allScored = useMemo(() => computeScores(options, weights), [options, weights]);
 
-  const filteredScored = useMemo(() => {
-    return filterOptions(allScored, filter);
-  }, [allScored, filter]);
+  const defaultFilter = useMemo<FilterState>(
+    () => ({
+      classes: new Set<TravelClass>(),
+      maxFare: bounds.fareMax,
+      minSuccessChance: 0,
+      maxDuration: bounds.durationMax,
+      departureAfter: "00:00",
+      departureBefore: "23:59",
+    }),
+    [bounds]
+  );
+  const filter = filterOverride ?? defaultFilter;
+  const filteredScored = useMemo(() => filterOptions(allScored, filter), [allScored, filter]);
+  const visibleIds = useMemo(() => new Set(filteredScored.map((o) => o.id)), [filteredScored]);
+  const bestOption = filteredScored[0] ?? null;
+  const selectedOption = useMemo(
+    () => (selectedId ? allScored.find((o) => o.id === selectedId) ?? null : null),
+    [allScored, selectedId]
+  );
+  const availableClasses = useMemo(
+    () => (["SL", "3A", "2A", "1A", "CC", "EC"] as TravelClass[]).filter((c) => options.some((o) => o.travelClass === c)),
+    [options]
+  );
+  const basisCounts = useMemo(() => {
+    const c: Record<DataBasis, number> = { live: 0, baseline: 0, estimate: 0 };
+    options.forEach((o) => (c[o.successBasis] += 1));
+    return c;
+  }, [options]);
+  const demoTimetable = useMemo(() => trains.some((t) => t.liveSource === "prototype"), [trains]);
 
-  const bestOption = useMemo(() => {
-    return filteredScored.length > 0 ? filteredScored[0] : null;
-  }, [filteredScored]);
-
-  const selectedOption = useMemo(() => {
-    if (!selectedId) return null;
-    return allScored.find((o) => o.id === selectedId) || null;
+  // Drop a selection whose option no longer exists (e.g. after a data refresh).
+  useEffect(() => {
+    if (selectedId && !allScored.some((o) => o.id === selectedId)) setSelectedId(null);
   }, [allScored, selectedId]);
 
-  // ─── Initialize 3D Scene Objects ────────────────────────────────────────────
-  const handleSceneReady = useCallback(
-    (handle: ThreeSceneHandle) => {
-      sceneHandleRef.current = handle;
-      const { scene, camera, canvas } = handle;
-
-      // 1. Camera Controller with OrbitControls
-      const controller = new CameraController(camera, canvas);
-      cameraControllerRef.current = controller;
-
-      // 2. Lighting & Atmosphere
-      const lighting = buildLightingAndAtmosphere(scene, theme);
-      lightingHandleRef.current = lighting;
-      scene.add(lighting.group);
-
-      // 3. Coordinate Cage & Axes
-      const cage = buildCoordinateCage(theme);
-      cageGroupRef.current = cage;
-      scene.add(cage);
-
-      // 4. Create Train Nodes
-      createTrainNodes(scene, allScored, colorblindMode, theme);
-    },
-    [allScored, colorblindMode, theme]
+  // ─── Live seat requests ─────────────────────────────────────────────────────
+  const trainOf = useCallback(
+    (o: TatkalOption): Train | undefined =>
+      trains.find((t) => t.number === o.trainNumber && t.fromCode === o.fromCode && t.toCode === o.toCode),
+    [trains]
+  );
+  const toRequests = useCallback(
+    (list: TatkalOption[]): SeatRequest[] =>
+      list.flatMap((o) => {
+        const train = trainOf(o);
+        return train ? [{ train, cls: o.travelClass }] : [];
+      }),
+    [trainOf]
   );
 
-  // ─── Update Lighting & Cage when Theme changes ─────────────────────────────
+  // Read the best-ranked options once per route/date. Ranking uses what we know now.
+  const prefetchedFor = useRef("");
   useEffect(() => {
-    const handle = sceneHandleRef.current;
-    if (!handle) return;
+    const signature = `${journeyDate ?? ""}|${trains.map((t) => t.id).join(",")}`;
+    if (allScored.length === 0 || prefetchedFor.current === signature) return;
+    prefetchedFor.current = signature;
+    request(toRequests(allScored.slice(0, PREFETCH_COUNT)));
+  }, [allScored, trains, journeyDate, request, toRequests]);
 
-    lightingHandleRef.current?.updateTheme(theme);
+  const refreshTop = useCallback(() => {
+    request(toRequests(allScored.slice(0, PREFETCH_COUNT)), true);
+  }, [allScored, request, toRequests]);
 
-    if (cageGroupRef.current) {
-      handle.scene.remove(cageGroupRef.current);
-      cageGroupRef.current.traverse((child) => {
-        if ((child as THREE.Mesh).geometry) (child as THREE.Mesh).geometry.dispose();
-        if ((child as THREE.Mesh).material) {
-          const mat = (child as THREE.Mesh).material;
-          if (Array.isArray(mat)) mat.forEach(m => m.dispose());
-          else mat.dispose();
-        }
-      });
-    }
-    const newCage = buildCoordinateCage(theme);
-    cageGroupRef.current = newCage;
-    handle.scene.add(newCage);
-  }, [theme]);
+  const refreshOne = useCallback(
+    (o: TatkalOption) => request(toRequests([o]), true),
+    [request, toRequests]
+  );
 
-  // ─── Rebuild Train Nodes when Scored Options or Theme changes ───────────────
-  useEffect(() => {
-    const handle = sceneHandleRef.current;
-    if (!handle) return;
-    createTrainNodes(handle.scene, allScored, colorblindMode, theme);
-  }, [allScored, colorblindMode, theme]);
+  // ─── Three.js objects (all owned here, all disposed here) ───────────────────
+  const cameraRef = useRef<CameraController | null>(null);
+  const lightingRef = useRef<LightingHandle | null>(null);
+  const layerRef = useRef<TrainNodeLayer | null>(null);
+  const raycasterRef = useRef(new THREE.Raycaster());
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const downRef = useRef<{ x: number; y: number } | null>(null);
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
 
-  // ─── Update Visible Nodes on Filter Change ───────────────────────────────────
-  useEffect(() => {
-    updateTrainNodes(allScored, filter, colorblindMode);
-  }, [allScored, filter, colorblindMode]);
-
-  // ─── Cleanup on Unmount ─────────────────────────────────────────────────────
-  useEffect(() => {
-    return () => {
-      disposeTrainNodes();
-      lightingHandleRef.current?.dispose();
-      cameraControllerRef.current?.dispose();
-    };
+  const handleSceneReady = useCallback((h: ThreeSceneHandle) => {
+    setSceneError(null);
+    setSceneHandle(h);
+  }, []);
+  const handleSceneDispose = useCallback(() => setSceneHandle(null), []);
+  const handleSceneError = useCallback((message: string) => {
+    setSceneHandle(null);
+    setSceneError(message);
   }, []);
 
-  // ─── Per-Frame Animation Loop ───────────────────────────────────────────────
-  const handleAnimate = useCallback(
-    (delta: number) => {
-      if (cameraControllerRef.current) {
-        if (autoRotate && !selectedId) {
-          cameraControllerRef.current.controls.autoRotate = true;
-          cameraControllerRef.current.controls.autoRotateSpeed = 1.0;
-        } else {
-          cameraControllerRef.current.controls.autoRotate = false;
-        }
-        cameraControllerRef.current.update();
-      }
-      animateTrainNodes(delta);
-    },
-    [autoRotate, selectedId]
-  );
+  // Camera + lights + marker layer: created once per WebGL scene.
+  useEffect(() => {
+    if (!sceneHandle) return;
+    const { scene, camera, canvas } = sceneHandle;
+    const cam = new CameraController(camera, canvas);
+    const onStart = () => setActivePreset(null);
+    cam.controls.addEventListener("start", onStart);
+    const lighting = buildLightingAndAtmosphere(scene, themeRef.current);
+    scene.add(lighting.group);
+    const layer = new TrainNodeLayer(scene, { theme: themeRef.current, colorblind: false, labelMode: "key" });
+    cameraRef.current = cam;
+    lightingRef.current = lighting;
+    layerRef.current = layer;
+    return () => {
+      cam.controls.removeEventListener("start", onStart);
+      cam.dispose();
+      lighting.dispose();
+      layer.dispose();
+      cameraRef.current = null;
+      lightingRef.current = null;
+      layerRef.current = null;
+    };
+  }, [sceneHandle]);
 
-  // ─── Camera Fly to Selected Option ──────────────────────────────────────────
+  // Coordinate cage: rebuilt only for a new theme or new axis ranges.
+  useEffect(() => {
+    if (!sceneHandle) return;
+    const cage = buildCoordinateCage(theme, bounds);
+    sceneHandle.scene.add(cage);
+    return () => disposeObject(cage);
+  }, [sceneHandle, theme, bounds]);
+
+  useEffect(() => {
+    lightingRef.current?.updateTheme(theme);
+  }, [theme, sceneHandle]);
+
+  // Markers glide to new positions/colours instead of being rebuilt.
+  useEffect(() => {
+    layerRef.current?.sync(allScored, bounds, { theme, colorblind, labelMode });
+  }, [sceneHandle, allScored, bounds, theme, colorblind, labelMode]);
+
+  useEffect(() => {
+    layerRef.current?.setView({ visibleIds, hoveredId, selectedId });
+  }, [sceneHandle, visibleIds, hoveredId, selectedId]);
+
+  useEffect(() => {
+    cameraRef.current?.setAutoRotate(autoRotate && !selectedId);
+  }, [autoRotate, selectedId, sceneHandle]);
+
+  const handleAnimate = useCallback((delta: number) => {
+    cameraRef.current?.update();
+    layerRef.current?.update(delta);
+  }, []);
+
+  // ─── Interaction ────────────────────────────────────────────────────────────
   const flyToOption = useCallback(
     (id: string) => {
       setSelectedId(id);
-      const opt = allScored.find((o) => o.id === id);
-      if (!opt || !cameraControllerRef.current) return;
-
-      // Ensure real-time live availability is actively retrieved on selection
-      fetchLiveAvailability(opt.trainNumber, opt.travelClass);
-
-      const mapRange = (val: number, sMin: number, sMax: number, dMin: number, dMax: number) =>
-        sMax === sMin ? (dMin + dMax) / 2 : dMin + ((val - sMin) / (sMax - sMin)) * (dMax - dMin);
-
-      const x = mapRange(opt.fare, CAGE_BOUNDS.fareMin, CAGE_BOUNDS.fareMax, CAGE_BOUNDS.worldMin, CAGE_BOUNDS.worldMax);
-      const y = mapRange(opt.tatkalSuccessChance, CAGE_BOUNDS.successMin, CAGE_BOUNDS.successMax, CAGE_BOUNDS.worldMin, CAGE_BOUNDS.worldMax);
-      const z = mapRange(opt.duration, CAGE_BOUNDS.durationMin, CAGE_BOUNDS.durationMax, CAGE_BOUNDS.worldMin, CAGE_BOUNDS.worldMax);
-
-      const targetPos = new THREE.Vector3(x, y, z);
-      const camOffset = new THREE.Vector3(x + 1.2, y + 0.8, z + 1.2);
-      cameraControllerRef.current.flyTo(camOffset, targetPos);
+      const cam = cameraRef.current;
+      const layer = layerRef.current;
+      const option = allScored.find((o) => o.id === id);
+      if (option) request(toRequests([option]));
+      if (!cam || !layer) return;
+      const target = layer.worldPositionOf(id);
+      if (!target) return;
+      // Keep the user's viewing direction; just move closer to the chosen marker.
+      const dir = cam.controls.object.position.clone().sub(cam.controls.target);
+      if (dir.lengthSq() < 1e-6) dir.set(1, 0.7, 1);
+      cam.flyTo(target.clone().add(dir.normalize().multiplyScalar(1.7)), target);
     },
-    [allScored]
+    [allScored, request, toRequests]
   );
 
-  // ─── Pointer Event Raycasting (Hover & Click) ──────────────────────────────
-  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const handle = sceneHandleRef.current;
-    if (!handle) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    mouseRef.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-    mouseRef.current.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  const clearSelection = useCallback(() => {
+    setSelectedId(null);
+    cameraRef.current?.preset("reset");
+    setActivePreset("reset");
+  }, []);
 
-    raycasterRef.current.setFromCamera(mouseRef.current, handle.camera);
-    const intersects = raycasterRef.current.intersectObjects(handle.scene.children, true);
-    const hitSphere = intersects.find((hit) => hit.object.userData?.optionId);
-    if (hitSphere) {
-      setHoveredId(hitSphere.object.userData.optionId);
-    } else {
-      setHoveredId(null);
+  const pickAt = useCallback(
+    (clientX: number, clientY: number): string | null => {
+      const handle = sceneHandle;
+      const layer = layerRef.current;
+      if (!handle || !layer) return null;
+      const rect = handle.canvas.getBoundingClientRect();
+      const ndc = new THREE.Vector2(
+        ((clientX - rect.left) / rect.width) * 2 - 1,
+        -((clientY - rect.top) / rect.height) * 2 + 1
+      );
+      raycasterRef.current.setFromCamera(ndc, handle.camera);
+      return layer.pick(raycasterRef.current);
+    },
+    [sceneHandle]
+  );
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    downRef.current = e.target === sceneHandle?.canvas ? { x: e.clientX, y: e.clientY } : null;
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== "mouse" || !sceneHandle) return;
+    if (e.target !== sceneHandle.canvas) {
+      if (hoveredId) setHoveredId(null);
+      return;
+    }
+    const id = pickAt(e.clientX, e.clientY);
+    sceneHandle.canvas.style.cursor = id ? "pointer" : "grab";
+    if (id !== hoveredId) setHoveredId(id);
+    if (id) {
+      const rect = viewportRef.current?.getBoundingClientRect();
+      if (rect) setHoverPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
     }
   };
 
-  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const handle = sceneHandleRef.current;
-    if (!handle) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-    const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-
-    raycasterRef.current.setFromCamera(new THREE.Vector2(x, y), handle.camera);
-    const intersects = raycasterRef.current.intersectObjects(handle.scene.children, true);
-    const hitSphere = intersects.find((hit) => hit.object.userData?.optionId);
-    if (hitSphere) {
-      flyToOption(hitSphere.object.userData.optionId);
-    }
+  const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    const down = downRef.current;
+    downRef.current = null;
+    if (!down || e.target !== sceneHandle?.canvas) return;
+    // A drag (orbit/pan) is not a click.
+    if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > CLICK_SLOP_PX) return;
+    const id = pickAt(e.clientX, e.clientY);
+    if (id) flyToOption(id);
+    else if (selectedId) clearSelection();
   };
 
-  // ─── Camera Presets Handler ─────────────────────────────────────────────────
-  const handlePreset = (preset: "iso" | "top" | "front" | "side") => {
+  const onViewportKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return; // never hijack sliders / buttons inside the HUD
+    if (e.key === "Escape") {
+      if (selectedId) clearSelection();
+      return;
+    }
+    const forward = e.key === "ArrowRight" || e.key === "ArrowDown";
+    const backward = e.key === "ArrowLeft" || e.key === "ArrowUp";
+    if (!forward && !backward) return;
+    e.preventDefault();
+    if (filteredScored.length === 0) return;
+    const idx = filteredScored.findIndex((o) => o.id === selectedId);
+    const next = idx === -1 ? 0 : (idx + (forward ? 1 : -1) + filteredScored.length) % filteredScored.length;
+    flyToOption(filteredScored[next].id);
+  };
+
+  const onPreset = (preset: CameraPreset) => {
     setActivePreset(preset);
-    const ctrl = cameraControllerRef.current;
-    if (!ctrl) return;
-    if (preset === "iso") ctrl.iso();
-    else if (preset === "top") ctrl.top();
-    else if (preset === "front") ctrl.front();
-    else if (preset === "side") ctrl.side();
+    cameraRef.current?.preset(preset);
   };
 
-  // ─── Booking Action Wrapper ─────────────────────────────────────────────────
-  const handleBook = (option: TatkalOption) => {
-    if (onBook) {
-      onBook(option);
-    } else {
-      alert(`Booking initiated for ${option.trainName} (${option.trainNumber}) in ${option.travelClass} under Tatkal Quota!`);
-    }
-  };
+  // ─── Derived presentation ───────────────────────────────────────────────────
+  const route = useMemo(() => {
+    if (trains.length === 0) return "";
+    const dests = [...new Set(trains.map((t) => t.toCode))];
+    return `${trains[0].from} → ${dests.length === 1 ? trains[0].to : dests.join(" · ")}`;
+  }, [trains]);
+  const dateText = formatJourneyDate(journeyDate);
+  const hoveredOption = hoveredId ? allScored.find((o) => o.id === hoveredId) ?? null : null;
+
+  const showScene = viewTab !== "table";
+  const hasData = options.length > 0;
+
+  // The control stack lives over the scene on desktop and inside the side panel otherwise.
+  const controls = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
+      <BestPickCard best={bestOption} onBook={onBook} onSelect={flyToOption} />
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button type="button" className="tv3d-btn" data-active={showWeights} aria-pressed={showWeights} onClick={() => setShowWeights((v) => !v)} style={{ ...toggleBtn(showWeights), background: showWeights ? "var(--viz-accent)" : "var(--viz-panel)" , color: showWeights ? "var(--viz-on-accent)" : "var(--viz-text)" }}>
+          <Icon name="sliders" size={13} /> Weights
+        </button>
+        <button type="button" className="tv3d-btn" data-active={showFilters} aria-pressed={showFilters} onClick={() => setShowFilters((v) => !v)} style={{ ...toggleBtn(showFilters), background: showFilters ? "var(--viz-accent)" : "var(--viz-panel)", color: showFilters ? "var(--viz-on-accent)" : "var(--viz-text)" }}>
+          <Icon name="filter" size={13} /> Filters{filterOverride ? " •" : ""}
+        </button>
+      </div>
+      {showWeights && <WeightSliderPanel weights={weights} onChange={setWeights} />}
+      {showFilters && (
+        <FilterToolbar
+          filter={filter}
+          bounds={bounds}
+          availableClasses={availableClasses}
+          isFiltered={filterOverride !== null}
+          onChange={setFilterOverride}
+          onReset={() => setFilterOverride(null)}
+        />
+      )}
+    </div>
+  );
+
+  const sidePanel = (
+    <div
+      className="tv3d-scroll"
+      style={{
+        flex: isNarrow ? "none" : viewTab === "table" ? 1 : viewTab === "split" ? "0 0 38%" : "0 0 360px",
+        display: viewTab === "3d" && !selectedOption && !isNarrow ? "none" : "flex",
+        flexDirection: "column",
+        gap: 12,
+        padding: 14,
+        overflowY: "auto",
+        borderLeft: isNarrow ? "none" : "1px solid var(--viz-line)",
+        borderTop: isNarrow ? "1px solid var(--viz-line)" : "none",
+        background: "var(--viz-panel-solid)",
+        minWidth: 0,
+      }}
+    >
+      {(!showScene || isNarrow) && controls}
+      {selectedOption && (
+        <TrainDetailDrawer
+          option={selectedOption}
+          journeyDate={journeyDate}
+          seatsPending={pending > 0}
+          onClose={clearSelection}
+          onBook={onBook}
+          onRefreshSeats={refreshOne}
+        />
+      )}
+      {(viewTab !== "3d" || !selectedOption || isNarrow) && (viewTab !== "3d" || isNarrow) && (
+        <Linked2DTable
+          options={filteredScored}
+          selectedId={selectedId}
+          hoveredId={hoveredId}
+          onSelectOption={flyToOption}
+          onHoverOption={setHoveredId}
+        />
+      )}
+    </div>
+  );
 
   return (
     <div
-      className={`train-viz-3d-root ${className}`}
+      className={`tv3d train-viz-3d-root ${className}`}
+      data-theme={theme}
       style={{
+        ...vizCssVars(theme),
         display: "flex",
         flexDirection: "column",
         width: "100%",
-        borderRadius: "20px",
+        borderRadius: 20,
         overflow: "hidden",
-        border: "1px solid var(--line)",
-        background: theme === "dark" ? "#050a14" : "#f0f6ff",
-        boxShadow: "0 24px 70px rgba(0,0,0,0.4)",
-        fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
+        border: "1px solid var(--viz-line)",
+        background: "var(--viz-bg)",
+        color: "var(--viz-text)",
+        boxShadow: "var(--viz-shadow)",
+        fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif",
         position: "relative",
         ...style,
       }}
     >
-      {/* ── Top Bar / HUD Header ───────────────────────────────────────────── */}
+      <style>{VIZ_CSS}</style>
+
+      {/* ── Header ───────────────────────────────────────────────────────── */}
       <header
         style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: 12,
-          padding: "12px 20px",
-          background: "rgba(14, 24, 34, 0.88)",
-          backdropFilter: "blur(18px)",
-          WebkitBackdropFilter: "blur(18px)",
-          borderBottom: "1px solid var(--line)",
-          zIndex: 10,
+          display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10,
+          padding: "10px 20px", background: "var(--viz-panel-solid)", borderBottom: "1px solid var(--viz-line)",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
           <div
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              background: "var(--accent)",
-              display: "grid",
-              placeItems: "center",
-              fontSize: 16,
-              color: "#fff",
-              fontWeight: 900,
-            }}
+            aria-hidden="true"
+            style={{ width: 34, height: 34, borderRadius: 9, background: "var(--viz-accent)", color: "var(--viz-on-accent)", display: "grid", placeItems: "center", flexShrink: 0 }}
           >
-            🎯
+            <Icon name="target" size={18} />
           </div>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "var(--text)" }}>
-              Tatkal 3D Train Decision Landscape
-            </h2>
-            <p style={{ margin: 0, fontSize: 11, color: "var(--muted)" }}>
-              Jaipur (JP) → Delhi · Multi-Objective Pareto Optimization
+          <div style={{ minWidth: 0 }}>
+            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "var(--viz-text)" }}>Tatkal Decision Landscape</h2>
+            <p style={{ margin: 0, fontSize: 12, color: "var(--viz-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {route || "Choose a route"}{dateText ? ` · ${dateText}` : ""} · {filteredScored.length} of {options.length} options
             </p>
           </div>
         </div>
 
-        {/* View Switcher Tabs */}
-        <div style={{ display: "flex", gap: 6, background: "rgba(255,255,255,0.05)", padding: 4, borderRadius: 10 }}>
-          <button
-            onClick={() => setViewTab("3d")}
-            style={{
-              padding: "6px 12px",
-              borderRadius: 8,
-              border: 0,
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: "pointer",
-              background: viewTab === "3d" ? "var(--accent)" : "transparent",
-              color: viewTab === "3d" ? "#fff" : "var(--muted)",
-              transition: "all 0.15s",
-            }}
-          >
-            🌐 3D Volumetric
-          </button>
-          <button
-            onClick={() => setViewTab("split")}
-            style={{
-              padding: "6px 12px",
-              borderRadius: 8,
-              border: 0,
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: "pointer",
-              background: viewTab === "split" ? "var(--accent)" : "transparent",
-              color: viewTab === "split" ? "#fff" : "var(--muted)",
-              transition: "all 0.15s",
-            }}
-          >
-            ◫ Split View
-          </button>
-          <button
-            onClick={() => setViewTab("table")}
-            style={{
-              padding: "6px 12px",
-              borderRadius: 8,
-              border: 0,
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: "pointer",
-              background: viewTab === "table" ? "var(--accent)" : "transparent",
-              color: viewTab === "table" ? "#fff" : "var(--muted)",
-              transition: "all 0.15s",
-            }}
-          >
-            📊 Ranked List
-          </button>
-        </div>
-
-        {/* Camera Preset Actions */}
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <span style={{ fontSize: 11, color: "var(--muted)" }}>Preset:</span>
-          {(["iso", "top", "front", "side"] as const).map((preset) => (
+        <div role="tablist" aria-label="View" style={{ display: "flex", gap: 4, background: "var(--viz-inset)", padding: 3, borderRadius: 10, border: "1px solid var(--viz-line)" }}>
+          {VIEW_TABS.map((t) => (
             <button
-              key={preset}
-              onClick={() => handlePreset(preset)}
-              style={{
-                padding: "4px 8px",
-                borderRadius: 6,
-                fontSize: 11,
-                fontWeight: 600,
-                border: activePreset === preset ? "1px solid var(--accent)" : "1px solid var(--line)",
-                background: activePreset === preset ? "rgba(30,64,175,0.25)" : "transparent",
-                color: activePreset === preset ? "var(--accent)" : "var(--muted)",
-                cursor: "pointer",
-                textTransform: "capitalize",
-              }}
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={viewTab === t.id}
+              className="tv3d-btn"
+              data-active={viewTab === t.id}
+              onClick={() => setViewTab(t.id)}
+              style={{ ...toggleBtn(viewTab === t.id), border: "1px solid transparent", fontWeight: 700 }}
             >
-              {preset}
+              <Icon name={t.icon} size={13} /> {t.label}
             </button>
           ))}
-          <button
-            onClick={() => setAutoRotate(!autoRotate)}
-            title="Toggle Auto-Rotation"
-            style={{
-              padding: "4px 8px",
-              borderRadius: 6,
-              fontSize: 11,
-              fontWeight: 600,
-              border: autoRotate ? "1px solid #10b981" : "1px solid var(--line)",
-              background: autoRotate ? "rgba(16,185,129,0.2)" : "transparent",
-              color: autoRotate ? "#10b981" : "var(--muted)",
-              cursor: "pointer",
-            }}
-          >
-            🔄 {autoRotate ? "Spin ON" : "Spin"}
-          </button>
         </div>
+
+        {showScene && (
+          <div role="group" aria-label="Camera" style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+            {PRESETS.map((p) => (
+              <button key={p.id} type="button" className="tv3d-btn" data-active={activePreset === p.id} aria-pressed={activePreset === p.id} onClick={() => onPreset(p.id)} style={toggleBtn(activePreset === p.id)}>
+                {p.label}
+              </button>
+            ))}
+            <button type="button" className="tv3d-btn" data-active={autoRotate} aria-pressed={autoRotate} title="Auto-rotate the scene" onClick={() => setAutoRotate((v) => !v)} style={toggleBtn(autoRotate)}>
+              <Icon name="rotate" size={13} /> Spin
+            </button>
+          </div>
+        )}
       </header>
 
-      {/* ── Main Workspace Body ────────────────────────────────────────────── */}
-      <div style={{ display: "flex", position: "relative", minHeight: "620px", height: "70vh", width: "100%" }}>
-        {/* 3D Scene Viewport (Rendered whenever viewTab is '3d' or 'split') */}
-        {(viewTab === "3d" || viewTab === "split") && (
+      <DataStatusBar counts={basisCounts} pending={pending} failed={failed} excluded={excluded} demoTimetable={demoTimetable} onRefresh={refreshTop} />
+
+      {/* ── Body ─────────────────────────────────────────────────────────── */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: isNarrow ? "column" : "row",
+          position: "relative",
+          width: "100%",
+          height: isNarrow ? "auto" : "min(74vh, 780px)",
+          minHeight: isNarrow ? 0 : 560,
+        }}
+      >
+        {showScene && (
           <div
-            style={{
-              flex: viewTab === "split" ? 1.2 : 1,
-              position: "relative",
-              width: "100%",
-              height: "100%",
-            }}
-            onPointerMove={handlePointerMove}
-            onClick={handleClick}
+            ref={viewportRef}
+            tabIndex={0}
+            role="application"
+            aria-label="3D comparison of trains. Use arrow keys to step through trains, Escape to clear."
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerLeave={() => setHoveredId(null)}
+            onKeyDown={onViewportKeyDown}
+            style={{ flex: 1, position: "relative", minHeight: isNarrow ? 420 : 0, minWidth: 0, outlineOffset: -2 }}
           >
-            <ThreeCanvas
-              theme={theme}
-              onSceneReady={handleSceneReady}
-              onAnimate={handleAnimate}
-              style={{ width: "100%", height: "100%", display: "block" }}
-            />
-
-            {/* Floating Top-Left Overlay: BestPickCard & Quick Sliders */}
-            <div
-              style={{
-                position: "absolute",
-                top: 16,
-                left: 16,
-                display: "flex",
-                flexDirection: "column",
-                gap: 10,
-                maxWidth: 320,
-                width: "90%",
-                pointerEvents: "auto",
-                zIndex: 5,
-              }}
-            >
-              <BestPickCard
-                best={bestOption}
-                onBook={handleBook}
-                onSelect={(id) => flyToOption(id)}
+            {!sceneError && (
+              <ThreeCanvas
+                key={sceneKey}
+                theme={theme}
+                onSceneReady={handleSceneReady}
+                onSceneDispose={handleSceneDispose}
+                onError={handleSceneError}
+                onAnimate={handleAnimate}
+                style={{ width: "100%", height: "100%", display: "block", touchAction: "none" }}
               />
+            )}
 
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  onClick={() => setShowWeights(!showWeights)}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: 8,
-                    fontSize: 11,
-                    fontWeight: 700,
-                    border: "1px solid var(--line)",
-                    background: showWeights ? "var(--accent)" : "rgba(14,24,34,0.85)",
-                    color: showWeights ? "#fff" : "var(--text)",
-                    cursor: "pointer",
-                    backdropFilter: "blur(12px)",
-                  }}
-                >
-                  ⚖️ {showWeights ? "Hide Weights" : "Adjust Weights"}
-                </button>
-                <button
-                  onClick={() => setShowFilters(!showFilters)}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: 8,
-                    fontSize: 11,
-                    fontWeight: 700,
-                    border: "1px solid var(--line)",
-                    background: showFilters ? "var(--accent)" : "rgba(14,24,34,0.85)",
-                    color: showFilters ? "#fff" : "var(--text)",
-                    cursor: "pointer",
-                    backdropFilter: "blur(12px)",
-                  }}
-                >
-                  🔍 {showFilters ? "Hide Filters" : "Filters"}
-                </button>
+            {!sceneHandle && !sceneError && <SceneSkeleton />}
+
+            {!isNarrow && (
+              <div style={{ position: "absolute", top: 14, left: 14, width: 320, maxWidth: "calc(100% - 28px)", maxHeight: "calc(100% - 100px)", overflowY: "auto", zIndex: 5 }} className="tv3d-scroll">
+                {controls}
               </div>
+            )}
 
-              {showWeights && (
-                <WeightSliderPanel weights={weights} onChange={setWeights} />
-              )}
-
-              {showFilters && (
-                <FilterToolbar filter={filter} onChange={setFilter} />
-              )}
-            </div>
-
-            {/* Floating Bottom-Center Legend */}
-            <div
-              style={{
-                position: "absolute",
-                bottom: 16,
-                left: "50%",
-                transform: "translateX(-50%)",
-                zIndex: 5,
-                pointerEvents: "auto",
-                maxWidth: 420,
-                width: "90%",
-              }}
-            >
+            <div style={{ position: "absolute", bottom: 12, left: "50%", transform: "translateX(-50%)", width: "min(560px, calc(100% - 28px))", zIndex: 5 }}>
               <LegendGradient
-                colorblindMode={colorblindMode}
-                onToggleColorblind={() => setColorblindMode(!colorblindMode)}
+                theme={theme}
+                colorblindMode={colorblind}
+                onToggleColorblind={() => setColorblind((v) => !v)}
+                labelMode={labelMode}
+                onToggleLabels={() => setLabelMode((m) => (m === "key" ? "all" : "key"))}
               />
             </div>
 
-            {/* Hover Tooltip Micro-HUD */}
-            {hoveredId && !selectedId && (
+            {hoveredOption && !isNarrow && (
               <div
+                role="tooltip"
                 style={{
-                  position: "absolute",
-                  bottom: 70,
-                  left: "50%",
-                  transform: "translateX(-50%)",
-                  background: "rgba(10, 18, 30, 0.95)",
-                  border: "1px solid var(--accent)",
-                  borderRadius: 10,
-                  padding: "8px 16px",
-                  fontSize: 12,
-                  color: "#fff",
-                  pointerEvents: "none",
-                  zIndex: 6,
-                  backdropFilter: "blur(12px)",
-                  boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+                  ...glassPanel, position: "absolute", pointerEvents: "none", zIndex: 7, padding: "8px 12px", fontSize: 12, width: 236, borderRadius: 10,
+                  left: Math.min((hoverPos?.x ?? 0) + 16, (viewportRef.current?.clientWidth ?? 800) - 252),
+                  top: Math.min((hoverPos?.y ?? 0) + 16, (viewportRef.current?.clientHeight ?? 600) - 150),
+                  background: "var(--viz-panel-solid)",
                 }}
               >
-                {(() => {
-                  const opt = allScored.find((o) => o.id === hoveredId);
-                  if (!opt) return null;
-                  return (
-                    <span>
-                      <strong>{opt.trainName}</strong> ({opt.trainNumber} · {opt.travelClass}) — ₹{opt.fare} · {opt.duration.toFixed(1)}h · {opt.tatkalSuccessChance}% Success
-                    </span>
-                  );
-                })()}
+                <div style={{ fontWeight: 700, marginBottom: 2 }}>{hoveredOption.trainName}</div>
+                <div style={{ color: "var(--viz-muted)", marginBottom: 6 }}>
+                  {hoveredOption.trainNumber} · {hoveredOption.travelClass} · Rank #{hoveredOption.rank}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "2px 10px", fontVariantNumeric: "tabular-nums" }}>
+                  <span style={{ color: "var(--viz-muted)" }}>Fare</span>
+                  <strong>{hoveredOption.fareBasis === "estimated" ? "≈" : ""}₹{hoveredOption.fare.toLocaleString("en-IN")}</strong>
+                  <span style={{ color: "var(--viz-muted)" }}>Time</span>
+                  <strong>{hoveredOption.departureTime} → {hoveredOption.arrivalTime} ({hoveredOption.duration.toFixed(1)}h)</strong>
+                  <span style={{ color: "var(--viz-muted)" }}>Success</span>
+                  <strong>{hoveredOption.successBasis === "estimate" ? "≈" : ""}{hoveredOption.tatkalSuccessChance}%</strong>
+                  <span style={{ color: "var(--viz-muted)" }}>Seats</span>
+                  <strong>{hoveredOption.seatsHint ?? "—"}</strong>
+                </div>
+                <div style={{ marginTop: 6 }}><BasisBadge basis={hoveredOption.successBasis} /></div>
               </div>
+            )}
+
+            {sceneError && (
+              <MessageState
+                tone="error"
+                title="3D view unavailable"
+                detail={`${sceneError} The ranked list below shows the same data.`}
+                actionLabel="Retry 3D"
+                onAction={() => {
+                  setSceneError(null);
+                  setSceneKey((k) => k + 1);
+                }}
+              />
             )}
           </div>
         )}
 
-        {/* Side Panel: Train Detail Drawer OR Linked2DTable */}
-        <div
-          style={{
-            flex: viewTab === "table" ? 1 : viewTab === "split" ? 0.8 : selectedOption ? 0.35 : 0,
-            display: viewTab === "3d" && !selectedOption ? "none" : "flex",
-            flexDirection: "column",
-            borderLeft: "1px solid var(--line)",
-            background: "rgba(10, 18, 28, 0.96)",
-            backdropFilter: "blur(20px)",
-            padding: 16,
-            gap: 12,
-            overflowY: "auto",
-            zIndex: 8,
-            transition: "flex 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
-          }}
-        >
-          {selectedOption ? (
-            <TrainDetailDrawer
-              option={selectedOption}
-              onClose={() => setSelectedId(null)}
-              onBook={handleBook}
-            />
-          ) : (
-            <Linked2DTable
-              options={filteredScored}
-              selectedId={selectedId}
-              hoveredId={hoveredId}
-              onSelectOption={(id) => flyToOption(id)}
-              onHoverOption={setHoveredId}
-            />
-          )}
+        {sidePanel}
 
-          {viewTab === "split" && selectedOption && (
-            <div style={{ marginTop: 12 }}>
-              <Linked2DTable
-                options={filteredScored}
-                selectedId={selectedId}
-                hoveredId={hoveredId}
-                onSelectOption={(id) => flyToOption(id)}
-                onHoverOption={setHoveredId}
-              />
-            </div>
-          )}
-        </div>
+        {!hasData && (
+          <MessageState
+            title={trains.length === 0 ? "No trains to compare yet" : "No comparable options"}
+            detail={
+              trains.length === 0
+                ? "Search a route and date first. The landscape appears as soon as trains are found."
+                : `${excluded.length} option${excluded.length === 1 ? " was" : "s were"} excluded because required details (fare, duration, class or an open booking status) are missing.`
+            }
+          />
+        )}
       </div>
     </div>
   );

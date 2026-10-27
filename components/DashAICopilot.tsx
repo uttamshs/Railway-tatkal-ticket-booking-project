@@ -191,7 +191,7 @@ export function DashAICopilot({
           right: "24px",
           zIndex: 80,
           background: "var(--accent)",
-          color: "var(--bg)",
+          color: "var(--on-accent)",
           border: "none",
           borderRadius: "999px",
           padding: "12px 20px",

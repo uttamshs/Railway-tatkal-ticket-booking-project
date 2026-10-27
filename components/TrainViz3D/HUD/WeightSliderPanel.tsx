@@ -1,110 +1,69 @@
 "use client";
 
 import { ScoreWeights } from "../lib/types";
-
-const GLASS_STYLE: React.CSSProperties = {
-  background: "rgba(14, 24, 34, 0.85)",
-  backdropFilter: "blur(16px)",
-  WebkitBackdropFilter: "blur(16px)",
-  border: "1px solid var(--line)",
-  borderRadius: 14,
-  padding: "16px 20px",
-  color: "var(--text)",
-};
+import { glassPanel, panelTitle } from "../lib/theme";
+import { Icon, IconName } from "./icons";
 
 interface WeightSliderPanelProps {
   weights: ScoreWeights;
   onChange: (weights: ScoreWeights) => void;
 }
 
-const LABELS: { key: keyof ScoreWeights; label: string; emoji: string }[] = [
-  { key: "success", label: "Tatkal Success", emoji: "🎯" },
-  { key: "fare", label: "Fare (cheap)", emoji: "💰" },
-  { key: "duration", label: "Speed", emoji: "⚡" },
+const ROWS: { key: keyof ScoreWeights; label: string; icon: IconName }[] = [
+  { key: "success", label: "Tatkal success", icon: "target" },
+  { key: "fare", label: "Low fare", icon: "tag" },
+  { key: "duration", label: "Speed", icon: "clock" },
 ];
 
-export default function WeightSliderPanel({
-  weights,
-  onChange,
-}: WeightSliderPanelProps) {
-  /** When one slider changes, renormalize so all three sum to 1. */
-  const handleChange = (key: keyof ScoreWeights, rawVal: number) => {
-    const updated = { ...weights, [key]: rawVal };
-    const total = updated.success + updated.fare + updated.duration;
-    if (total === 0) {
-      onChange({ success: 1 / 3, fare: 1 / 3, duration: 1 / 3 });
-    } else {
-      onChange({
-        success: updated.success / total,
-        fare: updated.fare / total,
-        duration: updated.duration / total,
-      });
-    }
-  };
+/**
+ * Sets `key` to `value` and rescales the OTHER two proportionally so the three
+ * always sum to 1. The slider being dragged therefore never jumps under the cursor.
+ */
+export function rebalance(weights: ScoreWeights, key: keyof ScoreWeights, value: number): ScoreWeights {
+  const v = Math.min(1, Math.max(0, value));
+  const others = (Object.keys(weights) as (keyof ScoreWeights)[]).filter((k) => k !== key);
+  const otherSum = others.reduce((s, k) => s + weights[k], 0);
+  const next = { ...weights, [key]: v } as ScoreWeights;
+  for (const k of others) {
+    next[k] = otherSum > 0 ? (weights[k] / otherSum) * (1 - v) : (1 - v) / others.length;
+  }
+  return next;
+}
 
+export default function WeightSliderPanel({ weights, onChange }: WeightSliderPanelProps) {
   return (
-    <div style={GLASS_STYLE}>
-      <p
-        style={{
-          margin: "0 0 12px 0",
-          fontWeight: 700,
-          fontSize: 13,
-          color: "var(--accent)",
-          textTransform: "uppercase",
-          letterSpacing: "0.08em",
-        }}
-      >
-        ⚖️ Score Weights
+    <div style={glassPanel}>
+      <p style={panelTitle}>
+        <Icon name="sliders" size={14} /> What matters most
       </p>
 
-      {LABELS.map(({ key, label, emoji }) => {
+      {ROWS.map(({ key, label, icon }) => {
         const pct = Math.round(weights[key] * 100);
         return (
-          <div key={key} style={{ marginBottom: 12 }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginBottom: 4,
-                fontSize: 13,
-              }}
+          <div key={key} style={{ marginBottom: 10 }}>
+            <label
+              htmlFor={`tv3d-w-${key}`}
+              style={{ display: "flex", justifyContent: "space-between", marginBottom: 2, fontSize: 13 }}
             >
-              <span>
-                {emoji} {label}
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <Icon name={icon} size={13} style={{ color: "var(--viz-muted)" }} /> {label}
               </span>
-              <span
-                style={{
-                  fontVariantNumeric: "tabular-nums",
-                  color: "var(--accent)",
-                  fontWeight: 600,
-                }}
-              >
-                {pct}%
-              </span>
-            </div>
+              <span style={{ fontVariantNumeric: "tabular-nums", color: "var(--viz-accent)", fontWeight: 700 }}>{pct}%</span>
+            </label>
             <input
+              id={`tv3d-w-${key}`}
               type="range"
               min={0}
               max={1}
               step={0.01}
               value={weights[key]}
-              onChange={(e) => handleChange(key, parseFloat(e.target.value))}
-              style={{ width: "100%", accentColor: "var(--accent)" }}
+              onChange={(e) => onChange(rebalance(weights, key, parseFloat(e.target.value)))}
             />
           </div>
         );
       })}
 
-      <div
-        style={{
-          marginTop: 4,
-          fontSize: 11,
-          color: "var(--muted)",
-          textAlign: "center",
-        }}
-      >
-        Auto-normalized · Always sum to 100%
-      </div>
+      <div style={{ fontSize: 11, color: "var(--viz-muted)", textAlign: "center" }}>Always sums to 100%</div>
     </div>
   );
 }

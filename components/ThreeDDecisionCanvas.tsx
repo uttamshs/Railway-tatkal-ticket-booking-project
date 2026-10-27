@@ -1202,7 +1202,7 @@ export function ThreeDDecisionCanvas({
             }}
             onMouseEnter={(e) => {
               (e.currentTarget as HTMLButtonElement).style.background = col.base;
-              (e.currentTarget as HTMLButtonElement).style.color = "#ffffff";
+              (e.currentTarget as HTMLButtonElement).style.color = tooltip.score >= 0.38 ? "#05261a" : "#ffffff";
             }}
             onMouseLeave={(e) => {
               (e.currentTarget as HTMLButtonElement).style.background = `linear-gradient(135deg, ${col.base}33, ${col.base}18)`;
