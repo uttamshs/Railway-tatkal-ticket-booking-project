@@ -290,7 +290,7 @@ export function ExpressIntentBar({ onLaunch }: Props) {
             <span className="ei-hint-text">Listening… say your route, date, class and time.</span>
           ) : (
             <span className="ei-hint-text">
-              Mention route, date, class, time window, fare cap — or what matters most (cheapest, fastest, best odds). I&apos;ll set every filter for you.
+              Type or speak your route, date, class or time window — filters apply automatically.
             </span>
           )}
         </div>
@@ -329,7 +329,6 @@ export function ExpressIntentBar({ onLaunch }: Props) {
             {note}
           </p>
         )}
-        <p className="ei-keys">Enter to go · Shift+Enter for a new line · you can still adjust every filter afterwards</p>
       </section>
       <div className="ei-divider" aria-hidden="true">
         <span>or set up manually</span>

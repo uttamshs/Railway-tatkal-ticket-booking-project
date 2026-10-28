@@ -1,6 +1,5 @@
 "use client";
 
-import { TIME_HORIZONS } from "../lib/temporalModel";
 import { btnActive, btnBase } from "./ui";
 import { Icon } from "./icons";
 
@@ -20,20 +19,17 @@ interface TemporalScrubberBarProps {
   onToggleFocusMode: () => void;
 }
 
-const HORIZON_LABELS: Record<number, string> = {
-  0: "0s Open",
-  30: "+30s",
-  60: "+60s UPI",
-  90: "+90s",
-  120: "+120s",
-  180: "+180s",
-};
+const KEY_HORIZONS: { sec: number; label: string; tip: string }[] = [
+  { sec: 0, label: "Now (0s)", tip: "Seats at the exact second Tatkal opens (10:00 AM)" },
+  { sec: 60, label: "+60s UPI", tip: "Seats remaining when your UPI payment finishes (~60s later)" },
+  { sec: 120, label: "+2m", tip: "Seats remaining 2 minutes after Tatkal opens" },
+  { sec: 180, label: "+3m", tip: "Seats remaining 3 minutes after Tatkal opens" },
+];
 
 /**
- * Unified, low-cognitive-load command strip coordinating:
- *  - 2.1: 4D Temporal Depletion Scrubber (0s -> +180s after Tatkal window open)
- *  - 2.3: 3D Quota-Jump Vector Arcs & 1-click upstream pool activation
- *  - 2.4: Rapid Focus Mode (isolates Top 3 Survivor Triad: Plan A + Backup B + #3 Pareto)
+ * Clean, low-cognitive-load command strip:
+ *  - Left:  Checkout Forecast (Now / +60s UPI / +2m / +3m) + Rehearse play button
+ *  - Right: 1-click Ajmer Quota Boost + Focus Top 3 toggle
  */
 export default function TemporalScrubberBar({
   elapsedSec,
@@ -44,8 +40,6 @@ export default function TemporalScrubberBar({
   totalVisible,
   quotaJumpCount,
   activeQuotaJumpCount,
-  showQuotaVectors,
-  onToggleQuotaVectors,
   onToggleAllQuotaJumps,
   focusMode,
   onToggleFocusMode,
@@ -55,59 +49,39 @@ export default function TemporalScrubberBar({
   return (
     <div
       role="region"
-      aria-label="Tatkal time-pressure scrubber and decision aids"
+      aria-label="Checkout survival forecast and quick actions"
       style={{
         display: "flex",
         flexWrap: "wrap",
         alignItems: "center",
-        gap: "8px 14px",
-        padding: "8px 20px",
+        gap: "6px 12px",
+        padding: "7px 20px",
         background: "var(--viz-panel-solid)",
         borderBottom: "1px solid var(--viz-line)",
         fontSize: 12,
         color: "var(--viz-text)",
       }}
     >
-      {/* ── 2.1: 4D Temporal Depletion Scrubber ── */}
+      {/* ── Left: Checkout Survival Forecast (2.1) ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
         <span
           style={{
             fontWeight: 700,
             fontSize: 11,
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
             color: "var(--viz-muted)",
             display: "inline-flex",
             alignItems: "center",
             gap: 4,
           }}
+          title="Forecasts which trains still have seats by the time your UPI payment completes"
         >
           <Icon name="clock" size={12} style={{ color: "var(--viz-accent)" }} />
-          Tatkal Rush
+          Checkout Forecast:
         </span>
-
-        <button
-          type="button"
-          className="tv3d-btn"
-          data-active={isPlaying}
-          aria-pressed={isPlaying}
-          title={isPlaying ? "Pause 3-minute Tatkal depletion simulation" : "Simulate seat depletion over the first 180 seconds of Tatkal"}
-          onClick={onTogglePlay}
-          style={{
-            ...btnBase,
-            ...(isPlaying ? btnActive : {}),
-            minHeight: 26,
-            padding: "2px 9px",
-            fontSize: 11,
-          }}
-        >
-          <Icon name={isPlaying ? "pause" : "play"} size={11} />
-          {isPlaying ? "Pause" : "Simulate"}
-        </button>
 
         <div
           role="group"
-          aria-label="Time after Tatkal opens"
+          aria-label="Forecast horizon"
           style={{
             display: "inline-flex",
             background: "var(--viz-inset)",
@@ -117,7 +91,7 @@ export default function TemporalScrubberBar({
             gap: 2,
           }}
         >
-          {TIME_HORIZONS.map((sec) => {
+          {KEY_HORIZONS.map(({ sec, label, tip }) => {
             const active = elapsedSec === sec;
             return (
               <button
@@ -126,69 +100,70 @@ export default function TemporalScrubberBar({
                 className="tv3d-btn"
                 data-active={active}
                 aria-pressed={active}
+                title={tip}
                 onClick={() => onSelectTime(sec)}
                 style={{
                   ...btnBase,
                   ...(active ? btnActive : {}),
                   border: "1px solid transparent",
                   minHeight: 22,
-                  padding: "2px 7px",
+                  padding: "2px 8px",
                   fontSize: 11,
                   borderRadius: 6,
                   fontVariantNumeric: "tabular-nums",
                 }}
               >
-                {HORIZON_LABELS[sec] ?? `+${sec}s`}
+                {label}
               </button>
             );
           })}
         </div>
 
+        <button
+          type="button"
+          className="tv3d-btn"
+          data-active={isPlaying}
+          aria-pressed={isPlaying}
+          title="Pre-window rehearsal: preview how fast seats drain over 3 minutes"
+          onClick={onTogglePlay}
+          style={{
+            ...btnBase,
+            ...(isPlaying ? btnActive : {}),
+            minHeight: 24,
+            padding: "2px 8px",
+            fontSize: 11,
+          }}
+        >
+          <Icon name={isPlaying ? "pause" : "play"} size={10} />
+          {isPlaying ? "Pause" : "Preview"}
+        </button>
+
         <span style={{ fontSize: 11, color: "var(--viz-muted)", fontVariantNumeric: "tabular-nums" }}>
-          <strong style={{ color: highOddsCount > 0 ? "var(--viz-good)" : "var(--viz-bad)" }}>{highOddsCount}</strong>/{totalVisible} ≥70% odds
+          <strong style={{ color: highOddsCount > 0 ? "var(--viz-good)" : "var(--viz-bad)" }}>{highOddsCount}</strong>/{totalVisible} safe
         </span>
       </div>
 
-      {/* ── Right side: 2.3 Quota-Jump Vectors & 2.4 Rapid Focus Mode ── */}
+      {/* ── Right: 1-Click Ajmer Quota Boost (2.3) & Focus Top 3 (2.4) ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: "auto", flexWrap: "wrap" }}>
         {quotaJumpCount > 0 && (
-          <>
-            <button
-              type="button"
-              className="tv3d-btn"
-              data-active={showQuotaVectors}
-              aria-pressed={showQuotaVectors}
-              title="Show rising 3D vector arcs for trains where booking from upstream Ajmer (AII) and boarding at Jaipur (JP) unlocks higher confirmation odds"
-              onClick={onToggleQuotaVectors}
-              style={{
-                ...btnBase,
-                ...(showQuotaVectors ? btnActive : {}),
-                minHeight: 26,
-                padding: "2px 10px",
-                fontSize: 11,
-              }}
-            >
-              <Icon name="zap" size={12} /> 3D Quota-Jump Arcs ({quotaJumpCount})
-            </button>
-
-            <button
-              type="button"
-              className="tv3d-btn"
-              data-active={allJumpsActive}
-              aria-pressed={allJumpsActive}
-              title="Apply Ajmer (AII) origin pool quota-jump to all eligible trains to maximize confirmation probability"
-              onClick={onToggleAllQuotaJumps}
-              style={{
-                ...btnBase,
-                ...(allJumpsActive ? btnActive : {}),
-                minHeight: 26,
-                padding: "2px 10px",
-                fontSize: 11,
-              }}
-            >
-              {allJumpsActive ? "✓ AII Origin Pool Applied" : `Apply AII Pool (${activeQuotaJumpCount}/${quotaJumpCount})`}
-            </button>
-          </>
+          <button
+            type="button"
+            className="tv3d-btn"
+            data-active={allJumpsActive}
+            aria-pressed={allJumpsActive}
+            title="Book from originating station Ajmer (AII) with boarding at Jaipur (JP) to unlock larger confirm pools"
+            onClick={onToggleAllQuotaJumps}
+            style={{
+              ...btnBase,
+              ...(allJumpsActive ? btnActive : {}),
+              minHeight: 25,
+              padding: "2px 10px",
+              fontSize: 11,
+            }}
+          >
+            <Icon name="zap" size={12} />
+            {allJumpsActive ? "✓ Ajmer Quota Boost On" : "Ajmer Quota Boost"}
+          </button>
         )}
 
         <button
@@ -196,18 +171,18 @@ export default function TemporalScrubberBar({
           className="tv3d-btn"
           data-active={focusMode}
           aria-pressed={focusMode}
-          title="Rapid Focus Mode: hide dominated noise and lock onto your Top 3 Survivor Triad (Plan A + Backup B + #3 Pareto)"
+          title="Hide low-odds trains and zoom into your Top 3 choices"
           onClick={onToggleFocusMode}
           style={{
             ...btnBase,
             ...(focusMode ? btnActive : {}),
-            minHeight: 26,
+            minHeight: 25,
             padding: "2px 10px",
             fontSize: 11,
             fontWeight: 700,
           }}
         >
-          <Icon name="focus" size={12} /> {focusMode ? "Focus Triad Active" : "Focus Top 3"}
+          <Icon name="focus" size={12} /> {focusMode ? "✓ Top 3 Only" : "Focus Top 3"}
         </button>
       </div>
     </div>

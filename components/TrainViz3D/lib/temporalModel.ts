@@ -18,7 +18,7 @@ import { estimateSuccess, parseSeatStatus } from "./successModel";
  *     2018/TG-I/20/P/Boarding) unlocks the AII master pool for the AII→JP distance delta.
  */
 
-export const TIME_HORIZONS = [0, 30, 60, 90, 120, 180] as const;
+export const TIME_HORIZONS = [0, 60, 120, 180] as const;
 export type TimeHorizonSec = (typeof TIME_HORIZONS)[number];
 
 /** Base seats drained per minute during the peak Tatkal opening window by class. */

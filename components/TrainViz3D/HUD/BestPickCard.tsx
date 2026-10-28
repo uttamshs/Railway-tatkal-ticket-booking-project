@@ -37,7 +37,6 @@ export default function BestPickCard({
     );
   }
 
-  const drop60 = best.velocityDrop60s ?? 0;
   const chance60 = best.chanceAt60s ?? best.tatkalSuccessChance;
   const qj = best.quotaJump;
 
@@ -47,10 +46,10 @@ export default function BestPickCard({
         ...glassPanel,
         border: "2px solid var(--viz-accent)",
         borderRadius: 16,
-        padding: "13px 15px",
+        padding: "12px 14px",
         display: "flex",
         flexDirection: "column",
-        gap: 9,
+        gap: 8,
       }}
     >
       {/* ── Primary Plan A Header ── */}
@@ -67,7 +66,7 @@ export default function BestPickCard({
         }}
         style={{ cursor: "pointer" }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5, flexWrap: "wrap" }}>
           <span
             style={{
               background: "linear-gradient(135deg,#ffd54a,#ff9f1c)",
@@ -80,9 +79,8 @@ export default function BestPickCard({
           >
             #1 PLAN A
           </span>
-          <span style={{ fontSize: 11.5, color: "var(--viz-muted)", fontVariantNumeric: "tabular-nums" }}>
-            Score {Math.round(best.compositeScore * 100)}%
-            {elapsedSec > 0 ? ` · T+${elapsedSec}s` : ""}
+          <span style={{ fontSize: 11, color: "var(--viz-muted)", fontVariantNumeric: "tabular-nums" }}>
+            {best.seatsHint ?? "Available"}
           </span>
           {best.paretoOptimal && (
             <span
@@ -93,6 +91,7 @@ export default function BestPickCard({
                 alignItems: "center",
                 gap: 3,
                 fontWeight: 700,
+                marginLeft: "auto",
               }}
             >
               <Icon name="diamond" size={11} /> Pareto
@@ -100,8 +99,8 @@ export default function BestPickCard({
           )}
         </div>
 
-        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 2, display: "flex", alignItems: "center", gap: 6 }}>
-          <Icon name="train" size={15} style={{ color: "var(--viz-accent)" }} />
+        <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 2, display: "flex", alignItems: "center", gap: 6 }}>
+          <Icon name="train" size={14} style={{ color: "var(--viz-accent)" }} />
           {best.trainName}
         </div>
         <div
@@ -120,27 +119,21 @@ export default function BestPickCard({
           <span>
             {best.departureTime} → {best.arrivalTime} ({best.duration.toFixed(1)}h)
           </span>
+          <BasisBadge basis={best.successBasis} />
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
-          <Stat label={best.fareBasis === "live" ? "Fare" : "Fare (est.)"} value={`₹${best.fare.toLocaleString("en-IN")}`} />
+          <Stat label="Fare" value={`₹${best.fare.toLocaleString("en-IN")}`} />
           <Stat
-            label={elapsedSec > 0 ? `Odds @ +${elapsedSec}s` : "Success"}
+            label={elapsedSec > 0 ? `Odds @ +${elapsedSec}s` : "Odds Now"}
             value={`${best.tatkalSuccessChance}%`}
             bad={best.tatkalSuccessChance < 50}
           />
           <Stat
-            label="+60s Hold"
-            value={`${chance60}%${drop60 >= 8 ? ` (↓${drop60})` : ""}`}
+            label="At UPI (+60s)"
+            value={`${chance60}%`}
             bad={chance60 < 50}
           />
-        </div>
-
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 7, gap: 6, flexWrap: "wrap" }}>
-          <BasisBadge basis={best.successBasis} />
-          <span style={{ fontSize: 11, color: "var(--viz-muted)", fontVariantNumeric: "tabular-nums" }}>
-            Seats: <strong style={{ color: "var(--viz-text)" }}>{best.seatsHint ?? "—"}</strong>
-          </span>
         </div>
       </div>
 
@@ -156,83 +149,63 @@ export default function BestPickCard({
             ...(best.quotaJumpActive ? btnActive : btnBase),
             width: "100%",
             justifyContent: "space-between",
-            padding: "6px 10px",
+            padding: "5px 10px",
             fontSize: 11,
-            borderRadius: 9,
+            borderRadius: 8,
           }}
         >
           <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontWeight: 700 }}>
-            <Icon name="zap" size={12} />
-            {best.quotaJumpActive
-              ? `Quota-Jump Active (${qj.originCode} → ${best.toCode}, Board ${qj.boardingCode})`
-              : `Quota-Jump: Book from ${qj.originCode} (Board ${qj.boardingCode})`}
+            <Icon name="zap" size={11} />
+            {best.quotaJumpActive ? `Ajmer Pool On (Board ${qj.boardingCode})` : `Boost via Ajmer (${qj.originCode})`}
           </span>
           <span style={{ fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>
-            {best.quotaJumpActive ? `✓ +₹${qj.fareDelta}` : `+${qj.successGain}% odds (+₹${qj.fareDelta})`}
+            {best.quotaJumpActive ? `✓ +₹${qj.fareDelta}` : `+${qj.successGain}% (+₹${qj.fareDelta})`}
           </span>
         </button>
       )}
 
-      {/* ── 2.2: Always-Available Auto-Backup B (Coordinated in real time with Scrubber) ── */}
+      {/* ── 2.2: Compact Auto-Backup B Row ── */}
       {backup && (
         <div
           style={{
             ...insetBox,
-            padding: "8px 10px",
-            borderRadius: 10,
+            padding: "7px 10px",
+            borderRadius: 9,
             border: shouldPivot ? "1.5px solid var(--viz-warn)" : "1px solid var(--viz-line)",
             background: "var(--viz-inset)",
           }}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, marginBottom: 4 }}>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10.5, fontWeight: 800, color: "var(--viz-accent)" }}>
-              <Icon name="shield" size={12} />
-              AUTO-BACKUP B READY
-            </span>
-            <span style={{ fontSize: 10.5, color: "var(--viz-muted)", fontVariantNumeric: "tabular-nums" }}>
-              {backup.tatkalSuccessChance}% now · {backup.chanceAt60s ?? backup.tatkalSuccessChance}% @ +60s
-            </span>
-          </div>
-
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, fontSize: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, fontSize: 11.5 }}>
             <div
               onClick={() => onSelect(backup.id)}
               style={{ cursor: "pointer", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-              title="Click to fly to Backup B in the 3D scene"
+              title="Click to inspect Backup B in 3D"
             >
-              <strong>{backup.trainNumber}</strong> · {backup.travelClass} · ₹{backup.fare.toLocaleString("en-IN")}
+              <span style={{ color: "var(--viz-accent)", fontWeight: 800, marginRight: 5 }}>BACKUP B</span>
+              <strong>{backup.trainNumber}</strong> · {backup.travelClass} · ₹{backup.fare.toLocaleString("en-IN")} ·{" "}
+              <strong style={{ color: "var(--viz-good)" }}>{backup.tatkalSuccessChance}%</strong>
             </div>
-            <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-              <button
-                type="button"
-                className="tv3d-btn"
-                onClick={() => onSelect(backup.id)}
-                style={{ ...btnBase, minHeight: 22, padding: "2px 7px", fontSize: 10.5 }}
-                title="Focus Backup B in the 3D scene"
-              >
-                View
-              </button>
-              <button
-                type="button"
-                className="tv3d-btn"
-                data-active={shouldPivot}
-                onClick={() => onPromoteBackup(backup.id)}
-                style={{
-                  ...(shouldPivot ? btnActive : btnBase),
-                  minHeight: 22,
-                  padding: "2px 8px",
-                  fontSize: 10.5,
-                  fontWeight: 700,
-                }}
-                title="Promote Backup B to Primary Plan A"
-              >
-                <Icon name="swap" size={10} /> {shouldPivot ? "Pivot to B" : "Make Plan A"}
-              </button>
-            </div>
+            <button
+              type="button"
+              className="tv3d-btn"
+              data-active={shouldPivot}
+              onClick={() => onPromoteBackup(backup.id)}
+              style={{
+                ...(shouldPivot ? btnActive : btnBase),
+                minHeight: 22,
+                padding: "2px 8px",
+                fontSize: 10.5,
+                fontWeight: 700,
+                flexShrink: 0,
+              }}
+              title="Swap Backup B into Plan A"
+            >
+              <Icon name="swap" size={10} /> {shouldPivot ? "Pivot" : "Swap"}
+            </button>
           </div>
 
           {shouldPivot && pivotReason && (
-            <div style={{ marginTop: 5, fontSize: 10.5, color: "var(--viz-warn)", fontWeight: 600, lineHeight: 1.35 }}>
+            <div style={{ marginTop: 4, fontSize: 10.5, color: "var(--viz-warn)", fontWeight: 600 }}>
               ⚠ {pivotReason}
             </div>
           )}
@@ -248,7 +221,7 @@ export default function BestPickCard({
         onClick={() => onBook(best, backup)}
       >
         <Icon name="ticket" size={16} />
-        {backup ? `Book Plan A (+ Lock Backup ${backup.trainNumber})` : "Book Tatkal now"}
+        {backup ? `Book Plan A (+ Lock Backup B)` : "Book Tatkal now"}
       </button>
     </div>
   );
@@ -258,7 +231,14 @@ function Stat({ label, value, bad }: { label: string; value: string; bad?: boole
   return (
     <div style={{ ...insetBox, textAlign: "center", padding: "5px 6px" }}>
       <div style={{ fontSize: 10, color: "var(--viz-muted)", marginBottom: 1 }}>{label}</div>
-      <div style={{ fontSize: 12.5, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: bad ? "var(--viz-bad)" : "var(--viz-text)" }}>
+      <div
+        style={{
+          fontSize: 13,
+          fontWeight: 800,
+          color: bad ? "var(--viz-bad)" : "var(--viz-text)",
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
         {value}
       </div>
     </div>
