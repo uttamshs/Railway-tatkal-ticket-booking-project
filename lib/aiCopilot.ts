@@ -1,5 +1,5 @@
 import { Train } from "./types";
-import { CORRIDOR_QUOTA_HACKS } from "./quotaJumping";
+import { BookingIntent, describeIntent, parseBookingIntent, understoodCount } from "./intent";
 
 export interface ChatMessage {
   id: string;
@@ -7,7 +7,7 @@ export interface ChatMessage {
   text: string;
   timestamp: string;
   action?: {
-    type: "select_train" | "set_priority" | "open_quota_hack" | "filter_budget" | "switch_view";
+    type: "select_train" | "set_priority" | "open_quota_hack" | "filter_budget" | "switch_view" | "apply_intent";
     payload?: any;
     label: string;
   };
@@ -15,6 +15,32 @@ export interface ChatMessage {
 
 export function generateCopilotResponse(query: string, trains: Train[], currentSelectedTrain: Train | null): { text: string; action?: ChatMessage["action"] } {
   const q = query.toLowerCase();
+
+  // 0. Express Natural-Language Booking / Filter Intent Extraction
+  const isConceptualQuestion =
+    q.includes("explain") ||
+    q.includes("what is") ||
+    q.includes("how does") ||
+    q.includes("pareto") ||
+    (q.includes("why") && !q.includes("book")) ||
+    (q.includes("quota") && (q.includes("hack") || q.includes("ajmer")));
+
+  if (!isConceptualQuestion) {
+    const parsed = parseBookingIntent(query);
+    if (understoodCount(parsed) >= 1) {
+      const chips = describeIntent(parsed);
+      const appliedSummary = chips.filter((c) => !c.warn).map((c) => `- **${c.label}**`).join("\n");
+      const warnSummary = chips.filter((c) => c.warn).map((c) => `- ⚠️ ${c.label}`).join("\n");
+      return {
+        text: `**Parsed Booking & Filter Intent:**\n${appliedSummary}${warnSummary ? `\n${warnSummary}` : ""}\n\nClick below to launch the **3D Tatkal Decision Landscape** with these exact filters pre-applied.`,
+        action: {
+          type: "apply_intent",
+          payload: parsed as BookingIntent,
+          label: "⚡ Launch 3D View with Filters →"
+        }
+      };
+    }
+  }
 
   // 1. Quota jumping question
   if (q.includes("quota") || q.includes("hack") || q.includes("ajmer") || q.includes("hidden") || q.includes("upstream") || q.includes("rlwl") || q.includes("gnwl")) {
@@ -75,8 +101,8 @@ export function generateCopilotResponse(query: string, trains: Train[], currentS
 - **Conclusion:** If your destination is central Delhi and you want a full working day, Rajdhani dominates; if you prefer daytime travel and west Delhi, Vande Bharat dominates.`,
       action: {
         type: "switch_view",
-        payload: "canvas",
-        label: "View in Interactive Pareto Canvas →"
+        payload: "tatkal3d",
+        label: "View in 3D Tatkal Landscape →"
       }
     };
   }
@@ -84,22 +110,22 @@ export function generateCopilotResponse(query: string, trains: Train[], currentS
   // 6. Pareto Frontier explanation
   if (q.includes("pareto") || q.includes("scatter") || q.includes("canvas") || q.includes("graph") || q.includes("chart") || q.includes("visual")) {
     return {
-      text: `The **Pareto Frontier** visualizes all non-dominated travel alternatives. A train is Pareto-optimal if no other train is simultaneously faster, cheaper, and has higher confirmation probability. You can drag the Budget ceiling slider or Duration threshold directly on our interactive 2D canvas to isolate your personal optimal boundary.`,
+      text: `The **Pareto Frontier** visualizes all non-dominated travel alternatives. A train is Pareto-optimal if no other train is simultaneously faster, cheaper, and has higher confirmation probability. You can explore the 3D Tatkal Decision Landscape or the 2D Pareto Canvas to isolate your optimal boundary.`,
       action: {
         type: "switch_view",
-        payload: "canvas",
-        label: "Open 2D Pareto Decision Space"
+        payload: "tatkal3d",
+        label: "Open 3D Tatkal Decision Space →"
       }
     };
   }
 
   // Fallback smart response
   return {
-    text: `I'm Dash Copilot, your intelligent assistant for the Jaipur ↔ Delhi corridor. I can help you evaluate multi-criteria trade-offs (Duration vs. Fare vs. Certainty), discover quota-jumping alternatives, configure group constraints for senior citizens, or explain why specific trains dominate others. What is your priority for this journey?`,
+    text: `I'm Dash Copilot, your intelligent assistant for the Jaipur ↔ Delhi corridor. Tell me your exact booking constraints (e.g., **"JP to Delhi on 31st Oct, only 2A and 3A, 10 am to 10 pm"**) and I will configure all filters and launch the 3D visualizer for you!`,
     action: {
       type: "switch_view",
-      payload: "canvas",
-      label: "Explore Visual Decision Canvas →"
+      payload: "tatkal3d",
+      label: "Explore 3D Tatkal Landscape →"
     }
   };
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ChatMessage, generateCopilotResponse } from "../lib/aiCopilot";
+import { BookingIntent } from "../lib/intent";
 import { Train } from "../lib/types";
 
 interface Props {
@@ -9,8 +10,9 @@ interface Props {
   selectedTrain: Train | null;
   onSelectTrain: (train: Train) => void;
   onOpenQuotaModal: (train: Train) => void;
-  onSwitchView: (view: "canvas" | "list" | "3d" | "dual") => void;
+  onSwitchView: (view: "canvas" | "list" | "3d" | "dual" | "tatkal3d") => void;
   onSetPriority: (p: any) => void;
+  onApplyIntent?: (intent: BookingIntent) => void;
 }
 
 function renderFormattedMessage(text: string) {
@@ -96,7 +98,8 @@ export function DashAICopilot({
   onSelectTrain,
   onOpenQuotaModal,
   onSwitchView,
-  onSetPriority
+  onSetPriority,
+  onApplyIntent
 }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
@@ -175,6 +178,9 @@ export function DashAICopilot({
       onSwitchView(action.payload);
     } else if (action.type === "set_priority") {
       onSetPriority(action.payload);
+    } else if (action.type === "apply_intent" && onApplyIntent) {
+      onApplyIntent(action.payload);
+      setIsOpen(false);
     }
   };
 

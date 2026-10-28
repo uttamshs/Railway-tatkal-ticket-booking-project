@@ -8,3 +8,4 @@ export * from "./lib/bounds";
 export * from "./lib/successModel";
 export * from "./lib/fares";
 export * from "./lib/tatkalWindow";
+export * from "./lib/vizIntent";

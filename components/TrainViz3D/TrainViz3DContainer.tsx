@@ -26,6 +26,8 @@ import TrainDetailDrawer from "./HUD/TrainDetailDrawer";
 import Linked2DTable from "./HUD/Linked2DTable";
 import DataStatusBar from "./HUD/DataStatusBar";
 import TemporalScrubberBar from "./HUD/TemporalScrubberBar";
+import IntentStrip, { RelaxAction } from "./HUD/IntentStrip";
+import { EMPHASIS_WEIGHTS, VizIntent } from "./lib/vizIntent";
 import { BasisBadge } from "./HUD/BasisBadge";
 import { MessageState, SceneSkeleton } from "./HUD/States";
 import { Icon, IconName } from "./HUD/icons";
@@ -41,6 +43,13 @@ interface TrainViz3DContainerProps {
   theme: VizTheme;
   /** Called when the user chooses "Book Tatkal now". Passes primary option + locked Backup B. */
   onBook: (option: TatkalOption, backupOption?: TatkalOption | null) => void;
+  /**
+   * Optional Express-intent hand-off (route/date are handled by the host; this carries the filters).
+   * Applied once per `intent.nonce`; absent = the visualizer behaves exactly as before.
+   */
+  intent?: VizIntent | null;
+  /** Called when the user clears the applied intent, so the host can forget it too. */
+  onClearIntent?: () => void;
   className?: string;
   style?: React.CSSProperties;
 }
@@ -78,6 +87,8 @@ export default function TrainViz3DContainer({
   journeyDate,
   theme,
   onBook,
+  intent,
+  onClearIntent,
   className = "",
   style,
 }: TrainViz3DContainerProps) {
@@ -114,6 +125,11 @@ export default function TrainViz3DContainer({
   // ─── UI state ───────────────────────────────────────────────────────────────
   const [weights, setWeights] = useState<ScoreWeights>(DEFAULT_WEIGHTS);
   const [filterOverride, setFilterOverride] = useState<FilterState | null>(null);
+  // Express intent (home-page prompt bar): kept separate from `filterOverride` so that numeric limits the
+  // user did NOT mention keep tracking live data bounds instead of freezing at the first load.
+  const [intentFilter, setIntentFilter] = useState<VizIntent | null>(null);
+  const [intentVisible, setIntentVisible] = useState(false);
+  const appliedIntentNonce = useRef<number | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
@@ -129,6 +145,24 @@ export default function TrainViz3DContainer({
   const [sceneKey, setSceneKey] = useState(0);
 
   const isNarrow = useMediaQuery("(max-width: 860px)");
+
+  // ─── Express intent: apply once per launch ──────────────────────────────────
+  useEffect(() => {
+    if (!intent || appliedIntentNonce.current === intent.nonce) return;
+    appliedIntentNonce.current = intent.nonce;
+    setFilterOverride(null);
+    setIntentFilter(intent);
+    setIntentVisible(true);
+    if (intent.emphasis) setWeights(EMPHASIS_WEIGHTS[intent.emphasis]);
+  }, [intent]);
+
+  const clearIntent = useCallback(() => {
+    if (intentFilter?.emphasis) setWeights(DEFAULT_WEIGHTS);
+    setFilterOverride(null);
+    setIntentFilter(null);
+    setIntentVisible(false);
+    onClearIntent?.();
+  }, [intentFilter, onClearIntent]);
 
   // ─── Temporal simulation playback timer (Feature 2.1) ───────────────────────
   useEffect(() => {
@@ -169,9 +203,63 @@ export default function TrainViz3DContainer({
     }),
     [bounds]
   );
-  const filter = filterOverride ?? defaultFilter;
+  const filter = useMemo<FilterState>(() => {
+    if (filterOverride) return filterOverride;
+    if (!intentFilter) return defaultFilter;
+    return {
+      classes: new Set<TravelClass>(intentFilter.classes ?? []),
+      maxFare: intentFilter.maxFare ?? defaultFilter.maxFare,
+      minSuccessChance: intentFilter.minSuccess ?? 0,
+      maxDuration: intentFilter.maxDuration ?? defaultFilter.maxDuration,
+      departureAfter: intentFilter.departureAfter ?? "00:00",
+      departureBefore: intentFilter.departureBefore ?? "23:59",
+    };
+  }, [filterOverride, intentFilter, defaultFilter]);
   const filteredScored = useMemo(() => filterOptions(allScored, filter), [allScored, filter]);
   const visibleIds = useMemo(() => new Set(filteredScored.map((o) => o.id)), [filteredScored]);
+
+  // ─── Express intent: truthful live summary + one-tap relaxations ────────────
+  const timeConstrained = filter.departureAfter !== "00:00" || filter.departureBefore !== "23:59";
+  const filterChips = useMemo(() => {
+    const chips: string[] = [];
+    if (filter.classes.size > 0) {
+      const order: TravelClass[] = ["1A", "2A", "3A", "CC", "EC", "SL"];
+      chips.push(order.filter((c) => filter.classes.has(c)).join(" · "));
+    }
+    if (timeConstrained) {
+      chips.push(
+        filter.departureAfter !== "00:00" && filter.departureBefore !== "23:59"
+          ? `Departs ${filter.departureAfter}–${filter.departureBefore}`
+          : filter.departureAfter !== "00:00"
+            ? `Departs after ${filter.departureAfter}`
+            : `Departs before ${filter.departureBefore}`
+      );
+    }
+    if (filter.maxFare < bounds.fareMax) chips.push(`Fare ≤ ₹${Math.round(filter.maxFare).toLocaleString("en-IN")}`);
+    if (filter.maxDuration < bounds.durationMax) chips.push(`Journey ≤ ${Number(filter.maxDuration.toFixed(2))}h`);
+    if (filter.minSuccessChance > 0) chips.push(`Odds ≥ ${filter.minSuccessChance}%`);
+    return chips;
+  }, [filter, bounds, timeConstrained]);
+
+  const relaxActions = useMemo<RelaxAction[]>(() => {
+    if (!intentFilter || allScored.length === 0 || filteredScored.length > 0) return [];
+    const candidates: { key: string; label: string; patch: Partial<FilterState> }[] = [];
+    if (filter.classes.size > 0) candidates.push({ key: "classes", label: "Any class", patch: { classes: new Set<TravelClass>() } });
+    if (timeConstrained) candidates.push({ key: "time", label: "Any departure time", patch: { departureAfter: "00:00", departureBefore: "23:59" } });
+    if (filter.maxFare < bounds.fareMax) candidates.push({ key: "fare", label: "No fare limit", patch: { maxFare: bounds.fareMax } });
+    if (filter.maxDuration < bounds.durationMax) candidates.push({ key: "duration", label: "Any journey length", patch: { maxDuration: bounds.durationMax } });
+    if (filter.minSuccessChance > 0) candidates.push({ key: "odds", label: "Any odds", patch: { minSuccessChance: 0 } });
+    return candidates
+      .map((c) => ({
+        key: c.key,
+        label: c.label,
+        gain: filterOptions(allScored, { ...filter, ...c.patch }).length,
+        onClick: () => setFilterOverride({ ...filter, ...c.patch }),
+      }))
+      .filter((a) => a.gain > 0)
+      .sort((a, b) => b.gain - a.gain)
+      .slice(0, 2);
+  }, [intentFilter, allScored, filteredScored.length, filter, bounds, timeConstrained]);
 
   const { planA, backupB, shouldPivot, pivotReason } = useMemo(
     () => selectBackupPair(filteredScored, pinnedPlanAId, pinnedBackupBId),
@@ -560,7 +648,7 @@ export default function TrainViz3DContainer({
               color: showFilters ? "var(--viz-on-accent)" : "var(--viz-text)",
             }}
           >
-            <Icon name="filter" size={13} /> Filters{filterOverride ? " •" : ""}
+            <Icon name="filter" size={13} /> Filters{filterOverride || intentFilter ? " •" : ""}
           </button>
         </div>
       )}
@@ -570,9 +658,12 @@ export default function TrainViz3DContainer({
           filter={filter}
           bounds={bounds}
           availableClasses={availableClasses}
-          isFiltered={filterOverride !== null}
+          isFiltered={filterOverride !== null || intentFilter !== null}
           onChange={setFilterOverride}
-          onReset={() => setFilterOverride(null)}
+          onReset={() => {
+            if (intentFilter) clearIntent();
+            else setFilterOverride(null);
+          }}
         />
       )}
     </div>
@@ -759,6 +850,22 @@ export default function TrainViz3DContainer({
         demoTimetable={demoTimetable}
         onRefresh={refreshTop}
       />
+
+      {/* ── Express intent summary: what the prompt bar applied, with one-tap recovery if nothing matches ── */}
+      {intentFilter && intentVisible && (
+        <IntentStrip
+          intent={intentFilter}
+          filterChips={filterChips}
+          matchCount={filteredScored.length}
+          totalCount={allScored.length}
+          relaxActions={relaxActions}
+          onEditFilters={() => {
+            setFocusMode(false);
+            setShowFilters(true);
+          }}
+          onClear={clearIntent}
+        />
+      )}
 
       {/* ── Unified Temporal Scrubber + Quota-Jump + Rapid Focus Strip (2.1, 2.3, 2.4) ── */}
       <TemporalScrubberBar

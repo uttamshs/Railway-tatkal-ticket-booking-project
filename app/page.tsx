@@ -8,7 +8,9 @@ import { Stepper } from "../components/Stepper";
 import Image from "next/image";
 import { ParetoDecisionCanvas } from "../components/ParetoDecisionCanvas";
 import { ThreeDDecisionCanvas } from "../components/ThreeDDecisionCanvas";
-import { TrainViz3DContainer, type TatkalOption } from "../components/TrainViz3D";
+import { TrainViz3DContainer, type TatkalOption, type VizIntent } from "../components/TrainViz3D";
+import { ExpressIntentBar } from "../components/ExpressIntentBar";
+import { BookingIntent, toVizIntent } from "../lib/intent";
 import { QuotaJumpingModal } from "../components/QuotaJumpingModal";
 import { AntiBotCanvasModal } from "../components/AntiBotCanvasModal";
 import { DashAICopilot } from "../components/DashAICopilot";
@@ -143,6 +145,8 @@ export default function Home() {
   const [quotaHackTrain, setQuotaHackTrain] = useState<Train | null>(null);
   const [appliedQuotaHack, setAppliedQuotaHack] = useState<QuotaHackOption | null>(null);
   const [lockedBackup, setLockedBackup] = useState<TatkalOption | null>(null);
+  // Express intent (home-page prompt bar) → filters handed to the 3D visualizer.
+  const [vizIntent, setVizIntent] = useState<VizIntent | null>(null);
   const [showAntiBot, setShowAntiBot] = useState<boolean>(false);
   const [expandedProbTrainId, setExpandedProbTrainId] = useState<string | null>(null);
 
@@ -176,6 +180,17 @@ export default function Home() {
   const groupInsight = senior && rules.senior ? "Senior passenger detected — lower-berth preference is being prioritized." : child && rules.child ? "Child passenger detected — Dash will prioritize keeping them with an adult." : rules.together ? "Group cohesion is on — Dash prefers one practical train for everyone." : "Dash will optimise using the constraints you selected.";
 
   const notify = (s: string) => { setToast(s); window.setTimeout(() => setToast(""), 3500) };
+
+  // Express intent: apply the understood request, then land directly in the pre-filtered 3D view.
+  const launchFromIntent = (intent: BookingIntent, engine: "instant" | "ai") => {
+    if (intent.to) setTo(intent.to);
+    if (intent.date && dates.includes(intent.date)) setDate(intent.date);
+    if (intent.quota) setQuota(intent.quota);
+    setVizIntent(toVizIntent(intent, engine, Date.now()));
+    setMode("search");
+    setViewMode("tatkal3d");
+    setStep(1);
+  };
   
   const search = async () => {
     setDataState("loading"); setDataMessage("Checking railway data…");
@@ -189,6 +204,10 @@ export default function Home() {
     } catch { setTrains(demoTrains); setDataState("fallback"); setDataMessage("Verified Corridor Timetable · Real-Time Live Seat Engine Ready"); }
   };
   useEffect(() => { search(); }, [date, from, to]);
+
+  // Returning to the journey form starts a fresh decision: an earlier prompt's filters must not leak
+  // into a later manual search.
+  useEffect(() => { if (step === 0) setVizIntent(null); }, [step]);
 
   const refreshAvailability = async (train: Train, cls: string) => {
     const key = `${train.id}:${cls}`;
@@ -319,6 +338,8 @@ export default function Home() {
                   <h2>Set up your journey</h2>
                 </div>
               </div>
+
+              <ExpressIntentBar onLaunch={launchFromIntent} />
               
               <div className="journey-grid">
                 <label>From
@@ -479,6 +500,8 @@ export default function Home() {
                   liveAvailability={live}
                   journeyDate={date}
                   theme={theme}
+                  intent={vizIntent}
+                  onClearIntent={() => setVizIntent(null)}
                   onBook={(opt, backupOpt) => {
                     const matched = filtered.find((t) => t.number === opt.trainNumber) || trains.find((t) => t.number === opt.trainNumber) || filtered[0];
                     if (matched) {
@@ -1382,6 +1405,10 @@ export default function Home() {
         }}
         onSetPriority={(p) => {
           setPriority(p);
+        }}
+        onApplyIntent={(intent) => {
+          launchFromIntent(intent, "instant");
+          notify("Dash AI applied your filters and launched 3D Decision View.");
         }}
       />
 
