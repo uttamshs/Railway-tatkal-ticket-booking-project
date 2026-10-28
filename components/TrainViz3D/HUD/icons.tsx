@@ -5,7 +5,7 @@ import type { CSSProperties } from "react";
 export type IconName =
   | "cube" | "split" | "list" | "rotate" | "sliders" | "filter" | "eye" | "ticket"
   | "clock" | "close" | "diamond" | "refresh" | "info" | "alert" | "tag" | "train"
-  | "target";
+  | "target" | "play" | "pause" | "zap" | "shield" | "swap" | "focus";
 
 const PATHS: Record<IconName, string[]> = {
   cube: [
@@ -29,13 +29,19 @@ const PATHS: Record<IconName, string[]> = {
   diamond: ["M12 2 22 12 12 22 2 12z"],
   info: ["M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z", "M12 16v-4", "M12 8h.01"],
   alert: ["m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3", "M12 9v4", "M12 17h.01"],
-  tag: ["M12 2H2v10l9.29 9.29a1 1 0 0 0 1.41 0l8.59-8.59a1 1 0 0 0 0-1.41z", "M7 7h.01"],
+  tag: ["M12 2H2v10l9.29 9.29a1 2 0 0 0 1.41 0l8.59-8.59a1 2 0 0 0 0-1.41z", "M7 7h.01"],
   train: [
     "M8 3.1V7a4 4 0 0 0 8 0V3.1",
     "M9 19c-2.8 0-5-2.2-5-5v-4a8 8 0 0 1 16 0v4c0 2.8-2.2 5-5 5Z",
     "M8 19l-2 3", "M16 19l2 3", "M9 14h.01", "M15 14h.01",
   ],
   target: ["M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z", "M12 6a6 6 0 1 0 0 12 6 6 0 0 0 0-12z", "M12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"],
+  play: ["M6 4l14 8-14 8V4z"],
+  pause: ["M6 4h4v16H6z", "M14 4h4v16h-4z"],
+  zap: ["M13 2L3 14h9l-1 8 10-12h-9l1-8z"],
+  shield: ["M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z", "m9 12 2 2 4-4"],
+  swap: ["M16 3l4 4-4 4", "M20 7H4", "M8 21l-4-4 4-4", "M4 17h16"],
+  focus: ["M3 7V5a2 2 0 0 1 2-2h2", "M17 3h2a2 2 0 0 1 2 2v2", "M21 17v2a2 2 0 0 1-2 2h-2", "M7 21H5a2 2 0 0 1-2-2v-2", "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"],
 };
 
 /** Stroke icon that inherits `currentColor`, so it is always legible on its surface. */

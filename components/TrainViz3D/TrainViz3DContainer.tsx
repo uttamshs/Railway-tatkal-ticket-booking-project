@@ -6,6 +6,7 @@ import { Train } from "../../lib/types";
 import { DataBasis, FilterState, ScoreWeights, TatkalOption, TravelClass } from "./lib/types";
 import { computeScores, filterOptions } from "./lib/scoringEngine";
 import { adaptTrains } from "./lib/realTrainAdapter";
+import { TIME_HORIZONS, projectOptionsAtTime, selectBackupPair } from "./lib/temporalModel";
 import { boundsKey, computeBounds } from "./lib/bounds";
 import { glassPanel, vizCssVars, VizTheme } from "./lib/theme";
 import { useLiveSeats, SeatRequest } from "./lib/useLiveSeats";
@@ -24,10 +25,11 @@ import LegendGradient from "./HUD/LegendGradient";
 import TrainDetailDrawer from "./HUD/TrainDetailDrawer";
 import Linked2DTable from "./HUD/Linked2DTable";
 import DataStatusBar from "./HUD/DataStatusBar";
+import TemporalScrubberBar from "./HUD/TemporalScrubberBar";
 import { BasisBadge } from "./HUD/BasisBadge";
 import { MessageState, SceneSkeleton } from "./HUD/States";
 import { Icon, IconName } from "./HUD/icons";
-import { VIZ_CSS, btnBase, btnActive } from "./HUD/ui";
+import { VIZ_CSS, btnBase, btnActive, btnPrimary } from "./HUD/ui";
 
 interface TrainViz3DContainerProps {
   /** Trains for the chosen route (real search results). */
@@ -37,8 +39,8 @@ interface TrainViz3DContainerProps {
   /** ISO journey date, e.g. "2026-10-28". */
   journeyDate?: string;
   theme: VizTheme;
-  /** Called when the user chooses "Book Tatkal now". */
-  onBook: (option: TatkalOption) => void;
+  /** Called when the user chooses "Book Tatkal now". Passes primary option + locked Backup B. */
+  onBook: (option: TatkalOption, backupOption?: TatkalOption | null) => void;
   className?: string;
   style?: React.CSSProperties;
 }
@@ -46,7 +48,7 @@ interface TrainViz3DContainerProps {
 type ViewTab = "3d" | "split" | "table";
 
 const DEFAULT_WEIGHTS: ScoreWeights = { success: 0.5, fare: 0.25, duration: 0.25 };
-const PREFETCH_COUNT = 10;
+const PREFETCH_COUNT = 24;
 const CLICK_SLOP_PX = 5;
 
 const VIEW_TABS: { id: ViewTab; label: string; icon: IconName }[] = [
@@ -79,13 +81,33 @@ export default function TrainViz3DContainer({
   className = "",
   style,
 }: TrainViz3DContainerProps) {
-  // ─── Data pipeline: real trains + real seat reads → options ────────────────
+  // ─── Data pipeline: real trains + real seat reads → base options ───────────
   const { seats, pending, failed, request } = useLiveSeats(journeyDate);
-  const { options, excluded } = useMemo(() => adaptTrains(trains, seats), [trains, seats]);
+  const { options: baseOptions, excluded } = useMemo(() => adaptTrains(trains, seats), [trains, seats]);
 
-  const rawBounds = useMemo(() => computeBounds(options), [options]);
+  // ─── 2.1, 2.2, 2.3, 2.4 State ───────────────────────────────────────────────
+  const [elapsedSec, setElapsedSec] = useState<number>(0);
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [activeQuotaJumpIds, setActiveQuotaJumpIds] = useState<Set<string>>(() => new Set());
+  const [showQuotaVectors, setShowQuotaVectors] = useState<boolean>(true);
+  const [pinnedPlanAId, setPinnedPlanAId] = useState<string | null>(null);
+  const [pinnedBackupBId, setPinnedBackupBId] = useState<string | null>(null);
+  const [focusMode, setFocusMode] = useState<boolean>(false);
+
+  // Project options forward to T + elapsedSec and compute Quota-Jump vectors
+  const options = useMemo(
+    () => projectOptionsAtTime(baseOptions, elapsedSec, activeQuotaJumpIds),
+    [baseOptions, elapsedSec, activeQuotaJumpIds]
+  );
+
+  // Keep cage bounds stable across temporal scrubbing by fitting to baseOptions + max quota jump fare
+  const rawBounds = useMemo(() => {
+    const withMaxJump = options.map((o) =>
+      o.quotaJump ? { ...o, fare: Math.max(o.fare, o.quotaJump.fareWithJump) } : o
+    );
+    return computeBounds(withMaxJump);
+  }, [options]);
   const bKey = boundsKey(rawBounds);
-  // Only rebuild the cage when the geometry actually changes, not on every seat read.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const bounds = useMemo(() => rawBounds, [bKey]);
 
@@ -108,7 +130,32 @@ export default function TrainViz3DContainer({
 
   const isNarrow = useMediaQuery("(max-width: 860px)");
 
-  // ─── Scoring & filtering ────────────────────────────────────────────────────
+  // ─── Temporal simulation playback timer (Feature 2.1) ───────────────────────
+  useEffect(() => {
+    if (!isPlaying) return;
+    const id = setInterval(() => {
+      setElapsedSec((prev) => {
+        const idx = TIME_HORIZONS.indexOf(prev as (typeof TIME_HORIZONS)[number]);
+        if (idx === -1 || idx >= TIME_HORIZONS.length - 1) {
+          setIsPlaying(false);
+          return TIME_HORIZONS[TIME_HORIZONS.length - 1];
+        }
+        return TIME_HORIZONS[idx + 1];
+      });
+    }, 1350);
+    return () => clearInterval(id);
+  }, [isPlaying]);
+
+  const handleTogglePlay = useCallback(() => {
+    setIsPlaying((playing) => {
+      if (!playing && elapsedSec >= TIME_HORIZONS[TIME_HORIZONS.length - 1]) {
+        setElapsedSec(0);
+      }
+      return !playing;
+    });
+  }, [elapsedSec]);
+
+  // ─── Scoring, Filtering & Real-Time Backup Pair Coordination (2.2) ──────────
   const allScored = useMemo(() => computeScores(options, weights), [options, weights]);
 
   const defaultFilter = useMemo<FilterState>(
@@ -125,13 +172,37 @@ export default function TrainViz3DContainer({
   const filter = filterOverride ?? defaultFilter;
   const filteredScored = useMemo(() => filterOptions(allScored, filter), [allScored, filter]);
   const visibleIds = useMemo(() => new Set(filteredScored.map((o) => o.id)), [filteredScored]);
-  const bestOption = filteredScored[0] ?? null;
+
+  const { planA, backupB, shouldPivot, pivotReason } = useMemo(
+    () => selectBackupPair(filteredScored, pinnedPlanAId, pinnedBackupBId),
+    [filteredScored, pinnedPlanAId, pinnedBackupBId]
+  );
+
+  // Survivor Triad for Rapid Focus Mode (2.4): Plan A, Backup B, and next Pareto survivor
+  const survivorTriad = useMemo(() => {
+    const list: typeof filteredScored = [];
+    if (planA) list.push(planA);
+    if (backupB && !list.some((x) => x.id === backupB.id)) list.push(backupB);
+    for (const o of filteredScored) {
+      if (list.length >= 3) break;
+      if (!list.some((x) => x.id === o.id) && (o.paretoOptimal || o.rank <= 4)) {
+        list.push(o);
+      }
+    }
+    return list;
+  }, [planA, backupB, filteredScored]);
+
+  const survivorIds = useMemo(() => new Set(survivorTriad.map((o) => o.id)), [survivorTriad]);
+
   const selectedOption = useMemo(
     () => (selectedId ? allScored.find((o) => o.id === selectedId) ?? null : null),
     [allScored, selectedId]
   );
   const availableClasses = useMemo(
-    () => (["SL", "3A", "2A", "1A", "CC", "EC"] as TravelClass[]).filter((c) => options.some((o) => o.travelClass === c)),
+    () =>
+      (["SL", "3A", "2A", "1A", "CC", "EC"] as TravelClass[]).filter((c) =>
+        options.some((o) => o.travelClass === c)
+      ),
     [options]
   );
   const basisCounts = useMemo(() => {
@@ -141,7 +212,36 @@ export default function TrainViz3DContainer({
   }, [options]);
   const demoTimetable = useMemo(() => trains.some((t) => t.liveSource === "prototype"), [trains]);
 
-  // Drop a selection whose option no longer exists (e.g. after a data refresh).
+  const highOddsCount = useMemo(
+    () => filteredScored.filter((o) => o.tatkalSuccessChance >= 70).length,
+    [filteredScored]
+  );
+  const quotaEligibleIds = useMemo(
+    () => options.filter((o) => Boolean(o.quotaJump)).map((o) => o.id),
+    [options]
+  );
+  const activeQuotaJumpCount = useMemo(
+    () => quotaEligibleIds.filter((id) => activeQuotaJumpIds.has(id)).length,
+    [quotaEligibleIds, activeQuotaJumpIds]
+  );
+
+  const toggleQuotaJumpFor = useCallback((id: string) => {
+    setActiveQuotaJumpIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleAllQuotaJumps = useCallback(() => {
+    setActiveQuotaJumpIds((prev) => {
+      const allOn = quotaEligibleIds.length > 0 && quotaEligibleIds.every((id) => prev.has(id));
+      return allOn ? new Set() : new Set(quotaEligibleIds);
+    });
+  }, [quotaEligibleIds]);
+
+  // Drop a selection whose option no longer exists.
   useEffect(() => {
     if (selectedId && !allScored.some((o) => o.id === selectedId)) setSelectedId(null);
   }, [allScored, selectedId]);
@@ -161,7 +261,6 @@ export default function TrainViz3DContainer({
     [trainOf]
   );
 
-  // Read the best-ranked options once per route/date. Ranking uses what we know now.
   const prefetchedFor = useRef("");
   useEffect(() => {
     const signature = `${journeyDate ?? ""}|${trains.map((t) => t.id).join(",")}`;
@@ -199,7 +298,6 @@ export default function TrainViz3DContainer({
     setSceneError(message);
   }, []);
 
-  // Camera + lights + marker layer: created once per WebGL scene.
   useEffect(() => {
     if (!sceneHandle) return;
     const { scene, camera, canvas } = sceneHandle;
@@ -208,7 +306,12 @@ export default function TrainViz3DContainer({
     cam.controls.addEventListener("start", onStart);
     const lighting = buildLightingAndAtmosphere(scene, themeRef.current);
     scene.add(lighting.group);
-    const layer = new TrainNodeLayer(scene, { theme: themeRef.current, colorblind: false, labelMode: "key" });
+    const layer = new TrainNodeLayer(scene, {
+      theme: themeRef.current,
+      colorblind: false,
+      labelMode: "key",
+      showQuotaJumps: true,
+    });
     cameraRef.current = cam;
     lightingRef.current = lighting;
     layerRef.current = layer;
@@ -223,7 +326,6 @@ export default function TrainViz3DContainer({
     };
   }, [sceneHandle]);
 
-  // Coordinate cage: rebuilt only for a new theme or new axis ranges.
   useEffect(() => {
     if (!sceneHandle) return;
     const cage = buildCoordinateCage(theme, bounds);
@@ -235,14 +337,26 @@ export default function TrainViz3DContainer({
     lightingRef.current?.updateTheme(theme);
   }, [theme, sceneHandle]);
 
-  // Markers glide to new positions/colours instead of being rebuilt.
   useEffect(() => {
-    layerRef.current?.sync(allScored, bounds, { theme, colorblind, labelMode });
-  }, [sceneHandle, allScored, bounds, theme, colorblind, labelMode]);
+    layerRef.current?.sync(allScored, bounds, {
+      theme,
+      colorblind,
+      labelMode,
+      showQuotaJumps: showQuotaVectors,
+    });
+  }, [sceneHandle, allScored, bounds, theme, colorblind, labelMode, showQuotaVectors]);
 
   useEffect(() => {
-    layerRef.current?.setView({ visibleIds, hoveredId, selectedId });
-  }, [sceneHandle, visibleIds, hoveredId, selectedId]);
+    layerRef.current?.setView({
+      visibleIds,
+      hoveredId,
+      selectedId,
+      planAId: planA?.id ?? null,
+      backupBId: backupB?.id ?? null,
+      focusMode,
+      survivorIds,
+    });
+  }, [sceneHandle, visibleIds, hoveredId, selectedId, planA, backupB, focusMode, survivorIds]);
 
   useEffect(() => {
     cameraRef.current?.setAutoRotate(autoRotate && !selectedId);
@@ -264,13 +378,44 @@ export default function TrainViz3DContainer({
       if (!cam || !layer) return;
       const target = layer.worldPositionOf(id);
       if (!target) return;
-      // Keep the user's viewing direction; just move closer to the chosen marker.
       const dir = cam.controls.object.position.clone().sub(cam.controls.target);
       if (dir.lengthSq() < 1e-6) dir.set(1, 0.7, 1);
       cam.flyTo(target.clone().add(dir.normalize().multiplyScalar(1.7)), target);
     },
     [allScored, request, toRequests]
   );
+
+  const handleToggleFocusMode = useCallback(() => {
+    setFocusMode((prev) => {
+      const next = !prev;
+      if (next) {
+        // Collapse secondary drawers to eliminate cognitive load
+        setShowWeights(false);
+        setShowFilters(false);
+        // Frame the centroid of the Survivor Triad
+        const cam = cameraRef.current;
+        const layer = layerRef.current;
+        if (cam && layer && survivorTriad.length > 0) {
+          const centroid = new THREE.Vector3();
+          let count = 0;
+          for (const s of survivorTriad) {
+            const p = layer.worldPositionOf(s.id);
+            if (p) {
+              centroid.add(p);
+              count++;
+            }
+          }
+          if (count > 0) {
+            centroid.divideScalar(count);
+            cam.flyTo(centroid.clone().add(new THREE.Vector3(1.45, 0.95, 1.65)), centroid);
+          }
+        }
+      } else {
+        cameraRef.current?.preset("reset");
+      }
+      return next;
+    });
+  }, [survivorTriad]);
 
   const clearSelection = useCallback(() => {
     setSelectedId(null);
@@ -279,7 +424,7 @@ export default function TrainViz3DContainer({
   }, []);
 
   const pickAt = useCallback(
-    (clientX: number, clientY: number): string | null => {
+    (clientX: number, clientY: number) => {
       const handle = sceneHandle;
       const layer = layerRef.current;
       if (!handle || !layer) return null;
@@ -289,7 +434,7 @@ export default function TrainViz3DContainer({
         -((clientY - rect.top) / rect.height) * 2 + 1
       );
       raycasterRef.current.setFromCamera(ndc, handle.camera);
-      return layer.pick(raycasterRef.current);
+      return layer.pickResult(raycasterRef.current);
     },
     [sceneHandle]
   );
@@ -304,7 +449,8 @@ export default function TrainViz3DContainer({
       if (hoveredId) setHoveredId(null);
       return;
     }
-    const id = pickAt(e.clientX, e.clientY);
+    const res = pickAt(e.clientX, e.clientY);
+    const id = res?.id ?? null;
     sceneHandle.canvas.style.cursor = id ? "pointer" : "grab";
     if (id !== hoveredId) setHoveredId(id);
     if (id) {
@@ -317,33 +463,49 @@ export default function TrainViz3DContainer({
     const down = downRef.current;
     downRef.current = null;
     if (!down || e.target !== sceneHandle?.canvas) return;
-    // A drag (orbit/pan) is not a click.
     if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > CLICK_SLOP_PX) return;
-    const id = pickAt(e.clientX, e.clientY);
-    if (id) flyToOption(id);
-    else if (selectedId) clearSelection();
+    const res = pickAt(e.clientX, e.clientY);
+    if (res) {
+      if (res.kind === "quotaJump") {
+        toggleQuotaJumpFor(res.id);
+      }
+      flyToOption(res.id);
+    } else if (selectedId) {
+      clearSelection();
+    }
   };
 
   const onViewportKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.target !== e.currentTarget) return; // never hijack sliders / buttons inside the HUD
+    if (e.target !== e.currentTarget) return;
     if (e.key === "Escape") {
       if (selectedId) clearSelection();
+      else if (focusMode) setFocusMode(false);
       return;
     }
     const forward = e.key === "ArrowRight" || e.key === "ArrowDown";
     const backward = e.key === "ArrowLeft" || e.key === "ArrowUp";
     if (!forward && !backward) return;
     e.preventDefault();
-    if (filteredScored.length === 0) return;
-    const idx = filteredScored.findIndex((o) => o.id === selectedId);
-    const next = idx === -1 ? 0 : (idx + (forward ? 1 : -1) + filteredScored.length) % filteredScored.length;
-    flyToOption(filteredScored[next].id);
+    const list = focusMode ? survivorTriad : filteredScored;
+    if (list.length === 0) return;
+    const idx = list.findIndex((o) => o.id === selectedId);
+    const next = idx === -1 ? 0 : (idx + (forward ? 1 : -1) + list.length) % list.length;
+    flyToOption(list[next].id);
   };
 
   const onPreset = (preset: CameraPreset) => {
     setActivePreset(preset);
     cameraRef.current?.preset(preset);
   };
+
+  const handlePromoteBackup = useCallback(
+    (backupId: string) => {
+      setPinnedPlanAId(backupId);
+      if (planA) setPinnedBackupBId(planA.id);
+      flyToOption(backupId);
+    },
+    [planA, flyToOption]
+  );
 
   // ─── Derived presentation ───────────────────────────────────────────────────
   const route = useMemo(() => {
@@ -357,20 +519,53 @@ export default function TrainViz3DContainer({
   const showScene = viewTab !== "table";
   const hasData = options.length > 0;
 
-  // The control stack lives over the scene on desktop and inside the side panel otherwise.
   const controls = (
     <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
-      <BestPickCard best={bestOption} onBook={onBook} onSelect={flyToOption} />
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button type="button" className="tv3d-btn" data-active={showWeights} aria-pressed={showWeights} onClick={() => setShowWeights((v) => !v)} style={{ ...toggleBtn(showWeights), background: showWeights ? "var(--viz-accent)" : "var(--viz-panel)" , color: showWeights ? "var(--viz-on-accent)" : "var(--viz-text)" }}>
-          <Icon name="sliders" size={13} /> Weights
-        </button>
-        <button type="button" className="tv3d-btn" data-active={showFilters} aria-pressed={showFilters} onClick={() => setShowFilters((v) => !v)} style={{ ...toggleBtn(showFilters), background: showFilters ? "var(--viz-accent)" : "var(--viz-panel)", color: showFilters ? "var(--viz-on-accent)" : "var(--viz-text)" }}>
-          <Icon name="filter" size={13} /> Filters{filterOverride ? " •" : ""}
-        </button>
-      </div>
-      {showWeights && <WeightSliderPanel weights={weights} onChange={setWeights} />}
-      {showFilters && (
+      <BestPickCard
+        best={planA}
+        backup={backupB}
+        shouldPivot={shouldPivot}
+        pivotReason={pivotReason}
+        elapsedSec={elapsedSec}
+        onBook={onBook}
+        onSelect={flyToOption}
+        onPromoteBackup={handlePromoteBackup}
+        onToggleQuotaJump={toggleQuotaJumpFor}
+      />
+      {!focusMode && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className="tv3d-btn"
+            data-active={showWeights}
+            aria-pressed={showWeights}
+            onClick={() => setShowWeights((v) => !v)}
+            style={{
+              ...toggleBtn(showWeights),
+              background: showWeights ? "var(--viz-accent)" : "var(--viz-panel)",
+              color: showWeights ? "var(--viz-on-accent)" : "var(--viz-text)",
+            }}
+          >
+            <Icon name="sliders" size={13} /> Weights
+          </button>
+          <button
+            type="button"
+            className="tv3d-btn"
+            data-active={showFilters}
+            aria-pressed={showFilters}
+            onClick={() => setShowFilters((v) => !v)}
+            style={{
+              ...toggleBtn(showFilters),
+              background: showFilters ? "var(--viz-accent)" : "var(--viz-panel)",
+              color: showFilters ? "var(--viz-on-accent)" : "var(--viz-text)",
+            }}
+          >
+            <Icon name="filter" size={13} /> Filters{filterOverride ? " •" : ""}
+          </button>
+        </div>
+      )}
+      {!focusMode && showWeights && <WeightSliderPanel weights={weights} onChange={setWeights} />}
+      {!focusMode && showFilters && (
         <FilterToolbar
           filter={filter}
           bounds={bounds}
@@ -403,16 +598,20 @@ export default function TrainViz3DContainer({
       {selectedOption && (
         <TrainDetailDrawer
           option={selectedOption}
+          backupOption={backupB}
+          elapsedSec={elapsedSec}
           journeyDate={journeyDate}
           seatsPending={pending > 0}
           onClose={clearSelection}
           onBook={onBook}
           onRefreshSeats={refreshOne}
+          onToggleQuotaJump={toggleQuotaJumpFor}
+          onPinBackup={(id) => setPinnedBackupBId(id)}
         />
       )}
       {(viewTab !== "3d" || !selectedOption || isNarrow) && (viewTab !== "3d" || isNarrow) && (
         <Linked2DTable
-          options={filteredScored}
+          options={focusMode ? survivorTriad : filteredScored}
           selectedId={selectedId}
           hoveredId={hoveredId}
           onSelectOption={flyToOption}
@@ -447,26 +646,65 @@ export default function TrainViz3DContainer({
       {/* ── Header ───────────────────────────────────────────────────────── */}
       <header
         style={{
-          display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10,
-          padding: "10px 20px", background: "var(--viz-panel-solid)", borderBottom: "1px solid var(--viz-line)",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 10,
+          padding: "10px 20px",
+          background: "var(--viz-panel-solid)",
+          borderBottom: "1px solid var(--viz-line)",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
           <div
             aria-hidden="true"
-            style={{ width: 34, height: 34, borderRadius: 9, background: "var(--viz-accent)", color: "var(--viz-on-accent)", display: "grid", placeItems: "center", flexShrink: 0 }}
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 9,
+              background: "var(--viz-accent)",
+              color: "var(--viz-on-accent)",
+              display: "grid",
+              placeItems: "center",
+              flexShrink: 0,
+            }}
           >
             <Icon name="target" size={18} />
           </div>
           <div style={{ minWidth: 0 }}>
-            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "var(--viz-text)" }}>Tatkal Decision Landscape</h2>
-            <p style={{ margin: 0, fontSize: 12, color: "var(--viz-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {route || "Choose a route"}{dateText ? ` · ${dateText}` : ""} · {filteredScored.length} of {options.length} options
+            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "var(--viz-text)" }}>
+              Tatkal Decision Landscape
+            </h2>
+            <p
+              style={{
+                margin: 0,
+                fontSize: 12,
+                color: "var(--viz-muted)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {route || "Choose a route"}
+              {dateText ? ` · ${dateText}` : ""} · {filteredScored.length} of {options.length} options
+              {elapsedSec > 0 ? ` · Projected @ T+${elapsedSec}s` : ""}
             </p>
           </div>
         </div>
 
-        <div role="tablist" aria-label="View" style={{ display: "flex", gap: 4, background: "var(--viz-inset)", padding: 3, borderRadius: 10, border: "1px solid var(--viz-line)" }}>
+        <div
+          role="tablist"
+          aria-label="View"
+          style={{
+            display: "flex",
+            gap: 4,
+            background: "var(--viz-inset)",
+            padding: 3,
+            borderRadius: 10,
+            border: "1px solid var(--viz-line)",
+          }}
+        >
           {VIEW_TABS.map((t) => (
             <button
               key={t.id}
@@ -486,18 +724,61 @@ export default function TrainViz3DContainer({
         {showScene && (
           <div role="group" aria-label="Camera" style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
             {PRESETS.map((p) => (
-              <button key={p.id} type="button" className="tv3d-btn" data-active={activePreset === p.id} aria-pressed={activePreset === p.id} onClick={() => onPreset(p.id)} style={toggleBtn(activePreset === p.id)}>
+              <button
+                key={p.id}
+                type="button"
+                className="tv3d-btn"
+                data-active={activePreset === p.id}
+                aria-pressed={activePreset === p.id}
+                onClick={() => onPreset(p.id)}
+                style={toggleBtn(activePreset === p.id)}
+              >
                 {p.label}
               </button>
             ))}
-            <button type="button" className="tv3d-btn" data-active={autoRotate} aria-pressed={autoRotate} title="Auto-rotate the scene" onClick={() => setAutoRotate((v) => !v)} style={toggleBtn(autoRotate)}>
+            <button
+              type="button"
+              className="tv3d-btn"
+              data-active={autoRotate}
+              aria-pressed={autoRotate}
+              title="Auto-rotate the scene"
+              onClick={() => setAutoRotate((v) => !v)}
+              style={toggleBtn(autoRotate)}
+            >
               <Icon name="rotate" size={13} /> Spin
             </button>
           </div>
         )}
       </header>
 
-      <DataStatusBar counts={basisCounts} pending={pending} failed={failed} excluded={excluded} demoTimetable={demoTimetable} onRefresh={refreshTop} />
+      <DataStatusBar
+        counts={basisCounts}
+        pending={pending}
+        failed={failed}
+        excluded={excluded}
+        demoTimetable={demoTimetable}
+        onRefresh={refreshTop}
+      />
+
+      {/* ── Unified Temporal Scrubber + Quota-Jump + Rapid Focus Strip (2.1, 2.3, 2.4) ── */}
+      <TemporalScrubberBar
+        elapsedSec={elapsedSec}
+        isPlaying={isPlaying}
+        onSelectTime={(sec) => {
+          setIsPlaying(false);
+          setElapsedSec(sec);
+        }}
+        onTogglePlay={handleTogglePlay}
+        highOddsCount={highOddsCount}
+        totalVisible={filteredScored.length}
+        quotaJumpCount={quotaEligibleIds.length}
+        activeQuotaJumpCount={activeQuotaJumpCount}
+        showQuotaVectors={showQuotaVectors}
+        onToggleQuotaVectors={() => setShowQuotaVectors((v) => !v)}
+        onToggleAllQuotaJumps={toggleAllQuotaJumps}
+        focusMode={focusMode}
+        onToggleFocusMode={handleToggleFocusMode}
+      />
 
       {/* ── Body ─────────────────────────────────────────────────────────── */}
       <div
@@ -538,12 +819,111 @@ export default function TrainViz3DContainer({
             {!sceneHandle && !sceneError && <SceneSkeleton />}
 
             {!isNarrow && (
-              <div style={{ position: "absolute", top: 14, left: 14, width: 320, maxWidth: "calc(100% - 28px)", maxHeight: "calc(100% - 100px)", overflowY: "auto", zIndex: 5 }} className="tv3d-scroll">
+              <div
+                style={{
+                  position: "absolute",
+                  top: 14,
+                  left: 14,
+                  width: 325,
+                  maxWidth: "calc(100% - 28px)",
+                  maxHeight: "calc(100% - 100px)",
+                  overflowY: "auto",
+                  zIndex: 5,
+                }}
+                className="tv3d-scroll"
+              >
                 {controls}
               </div>
             )}
 
-            <div style={{ position: "absolute", bottom: 12, left: "50%", transform: "translateX(-50%)", width: "min(560px, calc(100% - 28px))", zIndex: 5 }}>
+            {/* ── 2.4: Rapid Focus Survivor Triad Bar (Top-Right when Focus Mode is active) ── */}
+            {focusMode && survivorTriad.length > 0 && !isNarrow && (
+              <div
+                style={{
+                  ...glassPanel,
+                  position: "absolute",
+                  top: 14,
+                  right: 14,
+                  width: 310,
+                  padding: "10px 12px",
+                  borderRadius: 14,
+                  border: "1.5px solid var(--viz-accent)",
+                  zIndex: 5,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: "var(--viz-accent)", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <Icon name="focus" size={12} /> RAPID FOCUS: TOP {survivorTriad.length} SURVIVORS
+                  </span>
+                  <button
+                    type="button"
+                    className="tv3d-btn"
+                    onClick={() => setFocusMode(false)}
+                    style={{ ...btnBase, minHeight: 20, padding: "1px 6px", fontSize: 10 }}
+                  >
+                    Exit
+                  </button>
+                </div>
+                {survivorTriad.map((s, idx) => {
+                  const roleTag = s.id === planA?.id ? "PLAN A" : s.id === backupB?.id ? "BACKUP B" : `#${idx + 1} PARETO`;
+                  return (
+                    <div
+                      key={s.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
+                        padding: "6px 8px",
+                        borderRadius: 8,
+                        background: "var(--viz-inset)",
+                        border: "1px solid var(--viz-line)",
+                        fontSize: 11.5,
+                      }}
+                    >
+                      <div
+                        onClick={() => flyToOption(s.id)}
+                        style={{ cursor: "pointer", minWidth: 0 }}
+                        title="Click to focus in 3D"
+                      >
+                        <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}>
+                          <span style={{ fontSize: 9.5, fontWeight: 800, color: "var(--viz-accent)" }}>{roleTag}</span>
+                          <span>
+                            {s.trainNumber} · {s.travelClass}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 10.5, color: "var(--viz-muted)", fontVariantNumeric: "tabular-nums" }}>
+                          ₹{s.fare} · {s.tatkalSuccessChance}% odds · {s.duration.toFixed(1)}h
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="tv3d-btn"
+                        data-active="true"
+                        onClick={() => onBook(s, s.id === planA?.id ? backupB : planA)}
+                        style={{ ...btnPrimary, width: "auto", minHeight: 26, padding: "4px 10px", fontSize: 11 }}
+                      >
+                        Book
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div
+              style={{
+                position: "absolute",
+                bottom: 12,
+                left: "50%",
+                transform: "translateX(-50%)",
+                width: "min(620px, calc(100% - 28px))",
+                zIndex: 5,
+              }}
+            >
               <LegendGradient
                 theme={theme}
                 colorblindMode={colorblind}
@@ -557,27 +937,58 @@ export default function TrainViz3DContainer({
               <div
                 role="tooltip"
                 style={{
-                  ...glassPanel, position: "absolute", pointerEvents: "none", zIndex: 7, padding: "8px 12px", fontSize: 12, width: 236, borderRadius: 10,
-                  left: Math.min((hoverPos?.x ?? 0) + 16, (viewportRef.current?.clientWidth ?? 800) - 252),
-                  top: Math.min((hoverPos?.y ?? 0) + 16, (viewportRef.current?.clientHeight ?? 600) - 150),
+                  ...glassPanel,
+                  position: "absolute",
+                  pointerEvents: "none",
+                  zIndex: 7,
+                  padding: "9px 12px",
+                  fontSize: 12,
+                  width: 252,
+                  borderRadius: 10,
+                  left: Math.min((hoverPos?.x ?? 0) + 16, (viewportRef.current?.clientWidth ?? 800) - 268),
+                  top: Math.min((hoverPos?.y ?? 0) + 16, (viewportRef.current?.clientHeight ?? 600) - 180),
                   background: "var(--viz-panel-solid)",
                 }}
               >
                 <div style={{ fontWeight: 700, marginBottom: 2 }}>{hoveredOption.trainName}</div>
                 <div style={{ color: "var(--viz-muted)", marginBottom: 6 }}>
                   {hoveredOption.trainNumber} · {hoveredOption.travelClass} · Rank #{hoveredOption.rank}
+                  {hoveredOption.id === planA?.id ? " · Plan A" : hoveredOption.id === backupB?.id ? " · Backup B" : ""}
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "2px 10px", fontVariantNumeric: "tabular-nums" }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "auto 1fr",
+                    gap: "2px 10px",
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
                   <span style={{ color: "var(--viz-muted)" }}>Fare</span>
-                  <strong>{hoveredOption.fareBasis === "estimated" ? "≈" : ""}₹{hoveredOption.fare.toLocaleString("en-IN")}</strong>
+                  <strong>
+                    {hoveredOption.fareBasis === "estimated" ? "≈" : ""}₹{hoveredOption.fare.toLocaleString("en-IN")}
+                  </strong>
                   <span style={{ color: "var(--viz-muted)" }}>Time</span>
-                  <strong>{hoveredOption.departureTime} → {hoveredOption.arrivalTime} ({hoveredOption.duration.toFixed(1)}h)</strong>
-                  <span style={{ color: "var(--viz-muted)" }}>Success</span>
-                  <strong>{hoveredOption.successBasis === "estimate" ? "≈" : ""}{hoveredOption.tatkalSuccessChance}%</strong>
+                  <strong>
+                    {hoveredOption.departureTime} → {hoveredOption.arrivalTime} ({hoveredOption.duration.toFixed(1)}h)
+                  </strong>
+                  <span style={{ color: "var(--viz-muted)" }}>
+                    Odds {elapsedSec > 0 ? `@ +${elapsedSec}s` : ""}
+                  </span>
+                  <strong>
+                    {hoveredOption.tatkalSuccessChance}% (hold {hoveredOption.chanceAt60s ?? hoveredOption.tatkalSuccessChance}% @ +60s)
+                  </strong>
                   <span style={{ color: "var(--viz-muted)" }}>Seats</span>
                   <strong>{hoveredOption.seatsHint ?? "—"}</strong>
                 </div>
-                <div style={{ marginTop: 6 }}><BasisBadge basis={hoveredOption.successBasis} /></div>
+                {hoveredOption.quotaJump && !hoveredOption.quotaJumpActive && (
+                  <div style={{ marginTop: 5, fontSize: 11, color: "var(--viz-good)", fontWeight: 700 }}>
+                    ⚡ {hoveredOption.quotaJump.originCode} Quota-Jump: +{hoveredOption.quotaJump.successGain}% (+₹
+                    {hoveredOption.quotaJump.fareDelta})
+                  </div>
+                )}
+                <div style={{ marginTop: 6 }}>
+                  <BasisBadge basis={hoveredOption.successBasis} />
+                </div>
               </div>
             )}
 

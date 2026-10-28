@@ -8,7 +8,7 @@ import { Stepper } from "../components/Stepper";
 import Image from "next/image";
 import { ParetoDecisionCanvas } from "../components/ParetoDecisionCanvas";
 import { ThreeDDecisionCanvas } from "../components/ThreeDDecisionCanvas";
-import { TrainViz3DContainer } from "../components/TrainViz3D";
+import { TrainViz3DContainer, type TatkalOption } from "../components/TrainViz3D";
 import { QuotaJumpingModal } from "../components/QuotaJumpingModal";
 import { AntiBotCanvasModal } from "../components/AntiBotCanvasModal";
 import { DashAICopilot } from "../components/DashAICopilot";
@@ -142,6 +142,7 @@ export default function Home() {
   const [hoveredTrainId, setHoveredTrainId] = useState<string | null>(null);
   const [quotaHackTrain, setQuotaHackTrain] = useState<Train | null>(null);
   const [appliedQuotaHack, setAppliedQuotaHack] = useState<QuotaHackOption | null>(null);
+  const [lockedBackup, setLockedBackup] = useState<TatkalOption | null>(null);
   const [showAntiBot, setShowAntiBot] = useState<boolean>(false);
   const [expandedProbTrainId, setExpandedProbTrainId] = useState<string | null>(null);
 
@@ -478,11 +479,37 @@ export default function Home() {
                   liveAvailability={live}
                   journeyDate={date}
                   theme={theme}
-                  onBook={(opt) => {
-                    const matched = filtered.find((t) => t.number === opt.trainNumber) || filtered[0];
+                  onBook={(opt, backupOpt) => {
+                    const matched = filtered.find((t) => t.number === opt.trainNumber) || trains.find((t) => t.number === opt.trainNumber) || filtered[0];
                     if (matched) {
                       setSelected(matched);
                       setSelectedClass(opt.travelClass);
+                      if (opt.quotaJumpActive && opt.quotaJump) {
+                        setAppliedQuotaHack({
+                          trainNumber: opt.trainNumber,
+                          trainName: opt.trainName,
+                          originStation: opt.quotaJump.originStation,
+                          originCode: opt.quotaJump.originCode,
+                          destinationStation: opt.toStation,
+                          destinationCode: opt.toCode,
+                          boardingStation: opt.quotaJump.boardingStation,
+                          boardingCode: opt.quotaJump.boardingCode,
+                          fareOriginal: opt.fare - opt.quotaJump.fareDelta,
+                          fareWithHack: opt.fare,
+                          fareDelta: opt.quotaJump.fareDelta,
+                          directStatus: opt.seatsHint ?? "Waitlisted (RLWL)",
+                          directQuota: "Intermediate Quota (RLWL/PQWL)",
+                          hackStatus: opt.quotaJump.originSeatsHint,
+                          hackQuota: "Origin Master Quota (GNWL)",
+                          rationale: `Booking from ${opt.quotaJump.originStation} (${opt.quotaJump.originCode}) accesses the origin GNWL pool with Boarding Point set to ${opt.quotaJump.boardingCode}.`,
+                          departureTime: `${opt.departureTime} (${opt.quotaJump.boardingCode})`,
+                          arrivalTime: `${opt.arrivalTime} (${opt.toCode})`,
+                          ruleExplanation: opt.quotaJump.ruleCitation,
+                        });
+                      } else {
+                        setAppliedQuotaHack(null);
+                      }
+                      setLockedBackup(backupOpt && backupOpt.id !== opt.id ? backupOpt : null);
                       if (!live[`${matched.id}:${opt.travelClass}`]) {
                         refreshAvailability(matched, opt.travelClass);
                       }
@@ -710,14 +737,48 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="selected-ticket" style={{ background: "var(--panel2)", padding: "16px", borderRadius: "8px", border: "1px solid var(--line)", marginBottom: "24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div className="selected-ticket" style={{ background: "var(--panel2)", padding: "16px", borderRadius: "8px", border: "1px solid var(--line)", marginBottom: lockedBackup ? "12px" : "24px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
                 <div>
-                  <span className="eyebrow">SELECTED TRAIN</span>
+                  <span className="eyebrow">SELECTED TRAIN (PLAN A)</span>
                   <h3 style={{ margin: "4px 0" }}>{selected?.number} · {selected?.name}</h3>
-                  <p className="muted" style={{ margin: 0 }}>{selected?.departure} → {selected?.arrival} · {selectedClass}</p>
+                  <p className="muted" style={{ margin: 0 }}>
+                    {selected?.departure} → {selected?.arrival} · {selectedClass}
+                    {appliedQuotaHack && <span style={{ marginLeft: "8px", color: "#10b981", fontWeight: 700 }}>⚡ {appliedQuotaHack.originCode} Quota-Jump Active</span>}
+                  </p>
                 </div>
                 <button className="secondary-button" onClick={() => setStep(1)}>Change Train</button>
               </div>
+
+              {lockedBackup && (
+                <div style={{ padding: "12px 16px", background: "rgba(6, 182, 212, 0.08)", border: "1.5px solid rgba(6, 182, 212, 0.45)", borderRadius: "10px", marginBottom: "24px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                  <div>
+                    <span className="eyebrow" style={{ color: "var(--accent)", margin: 0 }}>🛡️ AUTO-BACKUP B LOCKED & READY</span>
+                    <strong style={{ display: "block", fontSize: "13.5px", color: "var(--text)", margin: "2px 0" }}>
+                      {lockedBackup.trainNumber} · {lockedBackup.trainName} ({lockedBackup.travelClass})
+                    </strong>
+                    <span style={{ fontSize: "12px", color: "var(--muted)" }}>
+                      {lockedBackup.departureTime} → {lockedBackup.arrivalTime} · ₹{lockedBackup.fare} · <strong style={{ color: "#10b981" }}>{lockedBackup.tatkalSuccessChance}% confirmation odds</strong> ({lockedBackup.seatsHint})
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="primary-button"
+                    style={{ fontSize: "12px", padding: "8px 14px" }}
+                    onClick={() => {
+                      const bMatch = filtered.find((t) => t.number === lockedBackup.trainNumber) || trains.find((t) => t.number === lockedBackup.trainNumber);
+                      if (bMatch) {
+                        setSelected(bMatch);
+                        setSelectedClass(lockedBackup.travelClass);
+                        setAppliedQuotaHack(null);
+                        setLockedBackup(null);
+                        notify(`Switched instantaneously to Backup B: ${lockedBackup.trainNumber} (${lockedBackup.travelClass})`);
+                      }
+                    }}
+                  >
+                    ⚡ Instant Pivot to Backup B
+                  </button>
+                </div>
+              )}
 
               {/* Master List Selection Grid */}
               <div style={{ marginBottom: "24px" }}>
@@ -846,6 +907,37 @@ export default function Home() {
                     style={{ fontSize: "11.5px", padding: "6px 12px", color: "var(--danger)", borderColor: "var(--danger)" }}
                   >
                     Remove Quota Hack
+                  </button>
+                </div>
+              )}
+
+              {lockedBackup && (
+                <div style={{ padding: "12px 16px", background: "rgba(6, 182, 212, 0.08)", border: "1.5px solid rgba(6, 182, 212, 0.45)", borderRadius: "10px", marginBottom: "18px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                  <div>
+                    <span className="eyebrow" style={{ color: "var(--accent)", margin: 0 }}>🛡️ FAILSAFE BACKUP B ARMED FOR CHECKOUT</span>
+                    <strong style={{ display: "block", fontSize: "13.5px", color: "var(--text)", margin: "2px 0" }}>
+                      {lockedBackup.trainNumber} · {lockedBackup.trainName} ({lockedBackup.travelClass})
+                    </strong>
+                    <span style={{ fontSize: "12px", color: "var(--muted)" }}>
+                      If Plan A drops to Waitlist at payment handoff, pivot in 1 click ({lockedBackup.tatkalSuccessChance}% odds · ₹{lockedBackup.fare}).
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="primary-button"
+                    style={{ fontSize: "12px", padding: "8px 14px" }}
+                    onClick={() => {
+                      const bMatch = filtered.find((t) => t.number === lockedBackup.trainNumber) || trains.find((t) => t.number === lockedBackup.trainNumber);
+                      if (bMatch) {
+                        setSelected(bMatch);
+                        setSelectedClass(lockedBackup.travelClass);
+                        setAppliedQuotaHack(null);
+                        setLockedBackup(null);
+                        notify(`Switched checkout to Backup B: ${lockedBackup.trainNumber} (${lockedBackup.travelClass})`);
+                      }
+                    }}
+                  >
+                    ⚡ Pivot Checkout to Backup B
                   </button>
                 </div>
               )}

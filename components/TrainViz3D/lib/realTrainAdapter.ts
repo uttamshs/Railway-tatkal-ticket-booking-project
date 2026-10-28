@@ -6,6 +6,7 @@ import { cheapestOf, estimateBaseFare, tatkalCharge } from "./fares";
 /** One seat-availability reading returned by /api/availability. */
 export interface SeatReading {
   status: string;
+  originStatus?: string;
   basis: "live" | "baseline";
   checkedAt?: string;
   /** Total fare reported by the provider (already includes the Tatkal charge). */
@@ -142,6 +143,7 @@ export function adaptTrains(trains: Train[], seats: SeatMap = {}): AdaptResult {
         fromCode: train.fromCode,
         toCode: train.toCode,
         seatsHint: reading?.status && estimate.basis !== "estimate" ? reading.status : undefined,
+        originSeatsHint: reading?.originStatus,
         seatsCheckedAt: reading?.checkedAt,
         timetableIsDemo,
         amenities: train.amenities ?? [],

@@ -9,6 +9,11 @@ import { PALETTES, contrastRatio } from "./theme";
 import { parseSeatStatus, estimateSuccess } from "./successModel";
 import { computeBounds } from "./bounds";
 import { rebalance } from "../HUD/WeightSliderPanel";
+import {
+  projectOptionsAtTime,
+  selectBackupPair,
+  cumulativeSeatDrain,
+} from "./temporalModel";
 
 const MOCK_OPTIONS: TatkalOption[] = [
   {
@@ -182,6 +187,32 @@ export function runTests(): boolean {
   const sum = reb.success + reb.fare + reb.duration;
   assert("Rebalanced weights sum to 1.0", Math.abs(sum - 1.0) < 1e-6);
 
-  console.log(`ScoringEngine & Theme tests: ${passed} passed, ${failed} failed.`);
+  // Test 9: 4D Temporal Depletion Scrubber & Velocity Drop-Tails (Proposal 2.1)
+  const drain0 = cumulativeSeatDrain(16, 0);
+  const drain60 = cumulativeSeatDrain(16, 60);
+  const drain120 = cumulativeSeatDrain(16, 120);
+  assert("Temporal drain at 0s is 0", drain0 === 0);
+  assert("Temporal drain increases monotonically (0s < 60s < 120s)", drain0 < drain60 && drain60 < drain120);
+
+  const proj0 = projectOptionsAtTime(MOCK_OPTIONS, 0, new Set());
+  const proj120 = projectOptionsAtTime(MOCK_OPTIONS, 120, new Set());
+  assert("Projected options populate chanceAt60s and velocityDrop60s", proj0.every((o) => typeof o.chanceAt60s === "number" && typeof o.velocityDrop60s === "number"));
+  assert("Scrubbing to +120s monotonically reduces or holds confirmation chance", proj120.every((o, i) => o.tatkalSuccessChance <= proj0[i].tatkalSuccessChance));
+
+  // Test 10: 3D Quota-Jump Vector Arcs (Proposal 2.3)
+  const t2At60 = projectOptionsAtTime(MOCK_OPTIONS, 60, new Set()).find((o) => o.id === "T2")!;
+  assert("Ajmer-origin train 12016 CC has quotaJump metadata (AVL 12 at JP vs AVL 32 at AII)", Boolean(t2At60.quotaJump && t2At60.quotaJump.originCode === "AII" && t2At60.quotaJump.successGain > 0));
+  const t2WithJump = projectOptionsAtTime(MOCK_OPTIONS, 60, new Set(["T2"])).find((o) => o.id === "T2")!;
+  assert("Activating Quota-Jump sets quotaJumpActive = true and adds fareDelta", Boolean(t2WithJump.quotaJumpActive) && t2WithJump.fare === t2At60.fare + 130);
+  assert("Activating Quota-Jump boosts confirmation odds", t2WithJump.tatkalSuccessChance > t2At60.tatkalSuccessChance);
+
+  // Test 11: Auto-Backup Pair ("Plan A + Backup B") Coordination (Proposal 2.2)
+  const scoredAt0 = computeScores(proj0, weights);
+  const pair0 = selectBackupPair(scoredAt0, null, null);
+  assert("Auto-backup selects distinct Plan A and Backup B", pair0.planA !== null && pair0.backupB !== null && pair0.planA.id !== pair0.backupB.id);
+  const pairRisky = selectBackupPair(scoredAt0, "T4", null);
+  assert("Selecting risky Plan A triggers shouldPivot recommendation to Backup B", pairRisky.shouldPivot === true && pairRisky.backupB !== null && pairRisky.backupB.tatkalSuccessChance > pairRisky.planA!.tatkalSuccessChance);
+
+  console.log(`ScoringEngine, 4D Temporal, Quota-Jump & Auto-Backup tests: ${passed} passed, ${failed} failed.`);
   return failed === 0;
 }

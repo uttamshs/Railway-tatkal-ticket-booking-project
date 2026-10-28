@@ -92,6 +92,7 @@ export function useLiveSeats(journeyDate: string | undefined): UseLiveSeats {
           const status = String(body?.status ?? "").trim();
           const reading: SeatReading = {
             status,
+            originStatus: typeof body?.originStatus === "string" ? body.originStatus : undefined,
             basis: LIVE_SOURCES.has(String(body?.source)) && body?.live !== false ? "live" : "baseline",
             checkedAt: typeof body?.checkedAt === "string" ? body.checkedAt : new Date().toISOString(),
             fare: typeof body?.fare === "number" ? body.fare : undefined,

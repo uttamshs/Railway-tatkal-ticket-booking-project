@@ -54,12 +54,13 @@ export default function LegendGradient({
           <Icon name="tag" size={12} /> All labels
         </button>
       </div>
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 11, color: "var(--viz-muted)" }}>
-        <span>● size = overall score</span>
-        <span style={{ color: "var(--viz-pareto)", fontWeight: 600 }}>◯ ring = Pareto-optimal</span>
-        <span>#1–3 = top picks</span>
-        <span>│ whisker = success-% uncertainty</span>
-        <span>◔ faded = estimate, not live</span>
+      <div style={{ display: "flex", gap: "4px 12px", flexWrap: "wrap", fontSize: 10.5, color: "var(--viz-muted)" }}>
+        <span>● size = score</span>
+        <span style={{ color: "var(--viz-pareto)", fontWeight: 600 }}>◯ ring = Pareto</span>
+        <span>│ whisker = uncertainty</span>
+        <span style={{ color: "var(--viz-warn)", fontWeight: 600 }}>↓ tail = −60s drop</span>
+        <span style={{ color: "var(--viz-accent)", fontWeight: 600 }}>⌒ arc = Plan A → Backup B</span>
+        <span style={{ color: "var(--viz-good)", fontWeight: 600 }}>◆ diamond = AII Quota-Jump</span>
       </div>
     </div>
   );
