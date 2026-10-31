@@ -1,0 +1,525 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { ChatMessage, generateCopilotResponse } from "../lib/aiCopilot";
+import { CopilotRequest, CopilotResponse, Priority, Train } from "../lib/types";
+
+interface Props {
+  trains: Train[];
+  selectedTrain: Train | null;
+  date: string;
+  quota: string;
+  priority: Priority;
+  passengerAges: number[];
+  liveAvailability?: Record<string, string>;
+  liveCheckedAt?: Record<string, string>;
+  onSelectTrain: (train: Train) => void;
+  onSwitchView: (view: "canvas" | "list") => void;
+  onSetPriority: (priority: Priority) => void;
+}
+
+function renderFormattedMessage(text: string) {
+  const lines = text.split("\n");
+  const isList = lines.some(l => l.trim().startsWith("- "));
+
+  if (isList) {
+    const elements: React.ReactNode[] = [];
+    let currentList: React.ReactNode[] = [];
+
+    lines.forEach((line, idx) => {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("- ")) {
+        const content = trimmed.substring(2);
+        const parts = content.split(/(\*\*.*?\*\*)/g);
+        currentList.push(
+          <li key={`li-${idx}`} style={{ marginBottom: "4px" }}>
+            {parts.map((p, pIdx) =>
+              p.startsWith("**") && p.endsWith("**") ? (
+                <strong key={pIdx}>{p.slice(2, -2)}</strong>
+              ) : (
+                p
+              )
+            )}
+          </li>
+        );
+      } else {
+        if (currentList.length > 0) {
+          elements.push(
+            <ul key={`ul-${idx}`} style={{ margin: "6px 0", paddingLeft: "18px" }}>
+              {currentList}
+            </ul>
+          );
+          currentList = [];
+        }
+        if (trimmed) {
+          const parts = trimmed.split(/(\*\*.*?\*\*)/g);
+          elements.push(
+            <p key={`p-${idx}`} style={{ margin: "4px 0" }}>
+              {parts.map((p, pIdx) =>
+                p.startsWith("**") && p.endsWith("**") ? (
+                  <strong key={pIdx}>{p.slice(2, -2)}</strong>
+                ) : (
+                  p
+                )
+              )}
+            </p>
+          );
+        }
+      }
+    });
+
+    if (currentList.length > 0) {
+      elements.push(
+        <ul key="ul-end" style={{ margin: "6px 0", paddingLeft: "18px" }}>
+          {currentList}
+        </ul>
+      );
+    }
+    return elements;
+  }
+
+  // Standard paragraph rendering with **bold** support
+  return lines.map((line, idx) => {
+    const parts = line.split(/(\*\*.*?\*\*)/g);
+    return (
+      <span key={idx} style={{ display: "block", marginBottom: idx < lines.length - 1 ? "6px" : 0 }}>
+        {parts.map((p, pIdx) =>
+          p.startsWith("**") && p.endsWith("**") ? (
+            <strong key={pIdx}>{p.slice(2, -2)}</strong>
+          ) : (
+            p
+          )
+        )}
+      </span>
+    );
+  });
+}
+
+export function DashAICopilot({
+  trains,
+  selectedTrain,
+  date,
+  quota,
+  priority,
+  passengerAges,
+  liveAvailability = {},
+  liveCheckedAt = {},
+  onSelectTrain,
+  onSwitchView,
+  onSetPriority
+}: Props) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [input, setInput] = useState("");
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    {
+      id: "init-1",
+      sender: "assistant",
+      text: "👋 Hi! I am **Dash AI Copilot**.\nI analyze multi-criteria trade-offs across the Jaipur ↔ Delhi corridor. Ask me about **fastest morning arrivals**, **quota-jumping hacks**, **senior lower berth allocation**, or **Pareto optimality**!",
+      timestamp: "Just now"
+    }
+  ]);
+  const [isTyping, setIsTyping] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const messageIdRef = useRef(0);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      scrollToBottom();
+      setTimeout(() => inputRef.current?.focus(), 150);
+    }
+  }, [messages, isOpen]);
+
+  // Handle escape key to close drawer
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen) {
+        setIsOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen]);
+
+  const handleSend = async (textToSend?: string) => {
+    const query = (textToSend || input).trim();
+    if (!query || query.length > 500 || isTyping) return;
+
+    messageIdRef.current += 1;
+    const userMsg: ChatMessage = {
+      id: `u-${messageIdRef.current}`,
+      sender: "user",
+      text: query,
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    };
+
+    setMessages(prev => [...prev, userMsg]);
+    setInput("");
+    setIsTyping(true);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 20000);
+    try {
+      const request: CopilotRequest = {
+        message: query,
+        history: messages.slice(-8).map(message => ({ sender: message.sender, text: message.text })),
+        date,
+        quota,
+        priority,
+        passengerAges,
+        selectedTrainId: selectedTrain?.id || null,
+        trains: trains.map(train => ({
+          id: train.id,
+          number: train.number,
+          name: train.name,
+          fromCode: train.fromCode,
+          toCode: train.toCode,
+          departure: train.departure,
+          arrival: train.arrival,
+          duration: train.duration,
+          fare: train.fare,
+          classes: train.classes.map(code => ({
+            code,
+            status: liveAvailability[`${train.id}:${code}`] || train.classAvailability.find(item => item.code === code)?.status || "Unavailable",
+            source: liveAvailability[`${train.id}:${code}`] ? "live" : train.classAvailability.find(item => item.code === code)?.source || "unavailable",
+            checkedAt: liveCheckedAt[`${train.id}:${code}`] || null
+          }))
+        }))
+      };
+      let response: Response;
+      try {
+        response = await fetch("/api/copilot", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(request),
+          cache: "no-store",
+          signal: controller.signal
+        });
+      } catch (error) {
+        response = await fetch("/api/copilot", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(request),
+          cache: "no-store",
+          signal: controller.signal
+        }).catch(() => { throw error; });
+      }
+      if (!response.ok) {
+        const problem = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(problem?.error || "Assistant unavailable");
+      }
+      const result = await response.json() as CopilotResponse;
+      messageIdRef.current += 1;
+      setMessages(prev => [...prev, {
+        id: `ai-${messageIdRef.current}`,
+        sender: "assistant",
+        text: result.answer,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        action: result.action || undefined
+      }]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Assistant unavailable";
+      const providerUnavailable = message !== "Assistant unavailable" && message !== "Failed to fetch";
+      const basic = generateCopilotResponse(query, trains, passengerAges);
+      messageIdRef.current += 1;
+      setMessages(prev => [...prev, {
+        id: `ai-${messageIdRef.current}`,
+        sender: "assistant",
+        text: providerUnavailable ? message : `Assistant unavailable right now. ${basic.text}`,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        action: providerUnavailable ? undefined : basic.action
+      }]);
+    } finally {
+      window.clearTimeout(timeout);
+      setIsTyping(false);
+    }
+  };
+
+  const handleAction = (action?: ChatMessage["action"]) => {
+    if (!action) return;
+    if (action.type === "select_train") {
+      const train = trains.find(item => item.id === action.value);
+      if (train) onSelectTrain(train);
+    } else if (action.type === "switch_view") {
+      onSwitchView(action.value);
+    } else if (action.type === "set_priority") {
+      onSetPriority(action.value);
+    }
+  };
+
+  return (
+    <>
+      {/* Floating Launcher Button */}
+      <button
+        className="copilot-launcher-btn"
+        onClick={() => setIsOpen(true)}
+        title="Open Dash AI Copilot"
+        style={{
+          position: "fixed",
+          bottom: "24px",
+          right: "24px",
+          zIndex: 80,
+          background: "var(--accent)",
+          color: "var(--bg)",
+          border: "none",
+          borderRadius: "999px",
+          padding: "12px 20px",
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          boxShadow: "0 8px 24px rgba(30, 64, 175, 0.28)",
+          fontWeight: 800,
+          fontSize: "13.5px",
+          cursor: "pointer",
+          transition: "transform 0.2s, box-shadow 0.2s"
+        }}
+      >
+        <span style={{ fontSize: "16px" }}>✦</span>
+        <span>Dash AI Copilot</span>
+        {selectedTrain && (
+          <span style={{ fontSize: "11px", opacity: 0.85, paddingLeft: "4px" }}>
+            · {selectedTrain.number}
+          </span>
+        )}
+      </button>
+
+      {/* Floating Slide-Over Drawer */}
+      {isOpen && (
+        <div className="copilot-overlay" onClick={() => setIsOpen(false)}>
+          <div
+            className="copilot-drawer"
+            onClick={e => e.stopPropagation()}
+            style={{
+              position: "fixed",
+              top: 0,
+              right: 0,
+              bottom: 0,
+              width: "min(460px, 95vw)",
+              background: "var(--panel)",
+              borderLeft: "1px solid var(--line)",
+              zIndex: 90,
+              display: "flex",
+              flexDirection: "column",
+              boxShadow: "-10px 0 40px rgba(0,0,0,0.35)",
+              animation: "slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1)"
+            }}
+          >
+            {/* Header */}
+            <div
+              style={{
+                padding: "16px 20px",
+                borderBottom: "1px solid var(--line)",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                background: "var(--panel2)"
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div
+                  style={{
+                    width: "34px",
+                    height: "34px",
+                    borderRadius: "9px",
+                    background: "var(--accent)",
+                    color: "var(--bg)",
+                    display: "grid",
+                    placeItems: "center",
+                    fontWeight: 900,
+                    fontSize: "16px"
+                  }}
+                >
+                  ✦
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "15px" }}>Dash AI Decision Copilot</h3>
+                  <span style={{ fontSize: "11px", color: "#10b981", fontWeight: 700 }}>
+                    AI assistant (beta) · answers may be wrong. Confirm on IRCTC.
+                  </span>
+                </div>
+              </div>
+              <button
+                className="icon-button"
+                onClick={() => setIsOpen(false)}
+                style={{ fontSize: "24px", lineHeight: "1" }}
+                title="Close Drawer"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Quick Prompt Chips */}
+            <div
+              style={{
+                padding: "10px 16px",
+                borderBottom: "1px solid var(--line)",
+                background: "var(--panel)",
+                display: "flex",
+                gap: "6px",
+                overflowX: "auto",
+                scrollbarWidth: "none"
+              }}
+            >
+              {[
+                "⚡ Fastest morning train",
+                "💡 Explain Ajmer quota hack",
+                "👴 Senior citizen lower berth",
+                "📊 Explain Pareto frontier",
+                "🔍 Rajdhani vs Vande Bharat"
+              ].map(chip => (
+                <button
+                  key={chip}
+                  onClick={() => handleSend(chip)}
+                  style={{
+                    whiteSpace: "nowrap",
+                    fontSize: "11px",
+                    padding: "5px 11px",
+                    borderRadius: "999px",
+                    border: "1px solid var(--line)",
+                    background: "var(--panel2)",
+                    color: "var(--text)",
+                    cursor: "pointer",
+                    fontWeight: 600,
+                    transition: "all 0.15s"
+                  }}
+                >
+                  {chip}
+                </button>
+              ))}
+            </div>
+
+            {/* Message Feed */}
+            <div
+              style={{
+                flex: 1,
+                overflowY: "auto",
+                padding: "18px 16px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "14px"
+              }}
+            >
+              {messages.map(m => {
+                const isUser = m.sender === "user";
+                return (
+                  <div
+                    key={m.id}
+                    style={{
+                      alignSelf: isUser ? "flex-end" : "flex-start",
+                      maxWidth: "88%",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: isUser ? "flex-end" : "flex-start"
+                    }}
+                  >
+                    <div
+                      style={{
+                        padding: "12px 14px",
+                        borderRadius: "14px",
+                        background: isUser ? "var(--accent)" : "var(--panel2)",
+                        color: isUser ? "var(--bg)" : "var(--text)",
+                        border: isUser ? "none" : "1px solid var(--line)",
+                        fontSize: "13px",
+                        lineHeight: "1.55"
+                      }}
+                    >
+                      {/* Formatted Markdown Content */}
+                      <div>{renderFormattedMessage(m.text)}</div>
+
+                      {/* Interactive UI Trigger Action Button */}
+                      {m.action && (
+                        <div
+                          style={{
+                            marginTop: "10px",
+                            paddingTop: "8px",
+                            borderTop: isUser
+                              ? "1px dashed rgba(255,255,255,0.25)"
+                              : "1px dashed var(--line)"
+                          }}
+                        >
+                          <button
+                            className="primary-button"
+                            onClick={() => handleAction(m.action)}
+                            style={{
+                              fontSize: "11.5px",
+                              padding: "7px 12px",
+                              background: isUser ? "var(--bg)" : "var(--accent)",
+                              color: isUser ? "var(--accent)" : "var(--bg)",
+                              fontWeight: 800,
+                              width: "100%",
+                              borderRadius: "7px"
+                            }}
+                          >
+                            {m.action.label}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <span style={{ fontSize: "10px", color: "var(--muted)", marginTop: "4px", padding: "0 4px" }}>
+                      {m.timestamp}
+                    </span>
+                  </div>
+                );
+              })}
+
+              {/* Animated Typing Indicator */}
+              {isTyping && (
+                <div
+                  style={{
+                    alignSelf: "flex-start",
+                    padding: "10px 14px",
+                    background: "var(--panel2)",
+                    borderRadius: "12px",
+                    border: "1px solid var(--line)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "5px"
+                  }}
+                >
+                  <span style={{ fontSize: "11px", color: "var(--muted)", marginRight: "4px" }}>
+                    Dash AI is thinking
+                  </span>
+                  <span className="typing-dot" style={{ width: "5px", height: "5px", borderRadius: "50%", background: "var(--accent)", display: "inline-block", animation: "bounceDot 1.4s infinite ease-in-out" }} />
+                  <span className="typing-dot" style={{ width: "5px", height: "5px", borderRadius: "50%", background: "var(--accent)", display: "inline-block", animation: "bounceDot 1.4s infinite ease-in-out 0.2s" }} />
+                  <span className="typing-dot" style={{ width: "5px", height: "5px", borderRadius: "50%", background: "var(--accent)", display: "inline-block", animation: "bounceDot 1.4s infinite ease-in-out 0.4s" }} />
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Input Box */}
+            <div
+              style={{
+                padding: "14px 16px",
+                borderTop: "1px solid var(--line)",
+                background: "var(--panel2)",
+                display: "flex",
+                gap: "8px"
+              }}
+            >
+              <input
+                ref={inputRef}
+                type="text"
+                placeholder="Ask about trains, trade-offs, quotas, lower berths…"
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleSend()}
+                style={{ flex: 1, fontSize: "13px" }}
+              />
+              <button
+                className="primary-button"
+                onClick={() => handleSend()}
+                style={{ padding: "0 16px", fontWeight: 800 }}
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
