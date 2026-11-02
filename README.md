@@ -1,170 +1,179 @@
-# DASH — Smart Rail Journey Planner
-> **Course:** Human-Computer Interaction (HCI — AI511)  
-> **Milestone:** Lab 8: Improve (Implementation, GitHub & Documentation)  
-> **Route Corridor:** Jaipur (JP) ↔ Delhi Metropolitan Cluster (NDLS, DLI, DEE, DEC, SSB)  
-> **Version:** `v3.0.0`  
-> **Evaluation Date:** 07 October 2026  
-> **Official Submission Document:** [`docs/documentation.pdf`](docs/documentation.pdf)
+# Dash — Smart Rail Journey Planner & Tatkal Decision Support System
+
+**Course:** AI511 — Human-Computer Interaction & Visualization (IIT Ropar)  
+**Corridor Focus:** Jaipur Junction (`JP`) ↔ New Delhi Cluster (`NDLS`, `DLI`, `DEE`, `DEC`, `SSB`)
 
 ---
 
-## 1. Project Introduction
-**Dash** is a high-fidelity, human-centered railway journey planner designed specifically for the high-density Jaipur–Delhi transit corridor. While traditional railway booking portals (such as IRCTC) treat ticket purchasing as a rigid transactional form, Dash addresses the complex cognitive and decision-making challenges of real travel: multi-passenger coordination, terminal ambiguity across metropolitan clusters, transparent trade-off evaluation, and contingency recovery when preferred services become unavailable.
+## EST Lab Final Submission Links
 
----
-
-## 2. Problem Statement
-Booking railway journeys in India—particularly on congested corridors under high-stakes quotas like Tatkal—presents severe user experience bottlenecks:
-1. **Station Ambiguity in Metropolitan Hubs:** Travellers heading to Delhi often do not know whether to select New Delhi (NDLS), Old Delhi (DLI), Delhi Sarai Rohilla (DEE), Delhi Cantt (DEC), or Shakur Basti (SSB), leading to decision paralysis.
-2. **Cognitive Load & Visual Overwhelm:** Legacy interfaces present overwhelming tabular matrices of train data, forcing users to mentally cross-reference arrival times, fares, dynamic quotas, and seat availability.
-3. **Rigid Multi-Passenger & Group Workflows:** Official portals mandate navigating away to an isolated "Master List" to edit passenger preferences. When planning multi-leg journeys (e.g. 3AC on Leg 1 requiring a Lower Berth, and Chair Car on Leg 2 requiring a Window Seat), passengers cannot set distinct preferences per leg inline.
-4. **Opaque "AI" and Recommendation Claims:** Systems often promote a single "Best Train" without articulating the compromises involved (e.g. earlier arrival vs higher ticket cost vs confirmation probability).
-5. **Data Freshness & Trust Ambiguity:** Users are frequently misled by static or cached seat counts that masquerade as live inventory, only to fail during final checkout.
-
----
-
-## 3. Project Objectives
-- **Reduce Cognitive Friction:** Implement progressive disclosure so that primary booking journeys remain streamlined while advanced analytical tools (station guides, trade-off comparisons) open only on explicit user request.
-- **Empower Group Travel:** Automatically identify passenger demographics (seniors aged 60+, children under 12) and apply intelligent group constraints (senior lower-berth priority, child-adult proximity, coach split prevention).
-- **Solve the Master-List Defect:** Enable seamless in-flow customization of passenger class and berth preferences, including per-leg overrides for multi-leg journeys.
-- **Ensure Transparent System Status:** Connect to server-side railway API proxies (RailRadar & Indian Railway API) with explicit timestamped `LIVE` indicators and honest, unmasked `DEMO FALLBACK` modes when external services are unavailable.
-- **Provide Contingency Planning:** Proactively generate backup fallback journeys and change-alert intents to safeguard travelers against sudden seat depletion.
-
----
-
-## 4. Team Members & Roles
-| Name | Role | Primary Responsibilities |
+| Deliverable | Access Link | Format / Notes |
 | :--- | :--- | :--- |
-| **Harshit Kulshrestha** | Lead Developer & UI/UX Architect | React 19 / Next.js implementation, Progressive Disclosure flow, Smart Match 2.0 recommendation engine, Lab 7 usability session analysis, design system & dual-theme architecture. |
-| **Uttam (uttamshs)** | Co-Developer & Repository Administrator | GitHub repository setup, version control governance, server-side API proxy routes (RailRadar & IR API), cloud deployment pipeline, and documentation maintenance. |
+| **5-Slide Presentation Deck** | [**View Presentation Deck on Google Drive**](https://drive.google.com/file/d/1UQAANPy1jrTt_3t4kqAFTNuD98ozleab/view?usp=drive_link) | PDF (Also available in-repo at [`docs/Dash_EST_Final_Presentation.pdf`](./docs/Dash_EST_Final_Presentation.pdf) and [`docs/Dash_EST_Final_Presentation.pptx`](./docs/Dash_EST_Final_Presentation.pptx)) |
+| **5-Minute Video Walkthrough & Pitch** | [**Watch Video Walkthrough & Pitch on Google Drive**](https://drive.google.com/file/d/1NRPTJO7oJpVztQShGgwkzgOgscfGTAT4/view?usp=drive_link) | Part 1: 5-Slide Technical Walkthrough · Part 2: Live Application Demo & Pitch |
+| **Lab 9 Validation Report** | [`docs/Lab 9 Validation Summary Report.pdf`](./docs/Lab%209%20Validation%20Summary%20Report.pdf) | Empirical usability, accessibility (Lighthouse 98/100), and SUS (87.5/100) evaluation |
 
 ---
 
-## 5. Technologies Used
-- **Frontend Framework:** [Next.js 16.3.7](https://nextjs.org/) (App Router architecture with React Server Components)
-- **UI Runtime:** [React 19.2.0](https://react.dev/) & React-DOM
-- **Language & Type System:** [TypeScript 5.7.0](https://www.typescriptlang.org/) (Strict typing for trains, passengers, and quotas)
-- **Styling Architecture:** Modern CSS3 Custom Properties (zero-runtime token-based Dark/Light theme switching, WCAG 2.1 AA accessible contrast)
-- **Live Railway Data APIs:**
-  - [RailRadar API](https://api.railradar.in) (Real-time train running status, platform numbers, and live delay tracking)
-  - Indian Railway REST Service (Timetable, schedule, and class-level seat availability queries)
-- **Verification & Documentation:** [Playwright](https://playwright.dev/) (Automated layout rendering & publication-grade PDF synthesis)
-- **Deployment Platform:** [Vercel](https://vercel.com/) (Production serverless hosting with environment variable encryption)
+## Team Members & Contributions
+
+* **Harshit (`@iArceus10`)** — *3D/4D InfoVis, Express NLP Intent & HCI Evaluation*
+  * **3D/4D WebGL Tatkal Decision Landscape (`components/TrainViz3D/`):** Three.js coordinate space mapping Fare ($X$), Duration ($Z$), and Confirmation Probability ($Y$), Pareto-optimal frontier rings, interactive weight sliders, and linked 2D table.
+  * **4D Checkout Survival Scrubber & Plan A + B Tether (`temporalModel.ts`):** Class-specific seat depletion modeling across `0s`, `+60s UPI`, `+2m`, and `+3m` horizons, 3D quota-jump vector arcs, and `Focus Top 3` mode.
+  * **Dual-Engine Express Intent Bar (`lib/intent.ts`, `ExpressIntentBar.tsx`):** Sub-5ms deterministic English/Hinglish & voice parser with optional Gemini/Groq LLM extraction and 140 automated unit tests.
+* **Uttam Kumar (`@uttamshs`)** — *AI Copilot Backend, Railway API Pipeline & 2D Decision Support*
+  * **Bounded-Context AI Copilot (`app/api/copilot/route.ts`, `lib/copilotPrompt.ts`, `DashAICopilot.tsx`):** OpenAI/Gemini-compatible proxy with anti-hallucination prompt rules, IP rate-limiting, and automatic heuristic fallback.
+  * **3-Tier Railway API Pipeline (`app/api/availability/`, `app/api/search/`, `app/api/live/`):** Live RailKit SDK and RailRadar integrations with 15-minute in-memory caching, timeout circuit-breakers, and IST (`Asia/Kolkata`) window calculation.
+  * **2D Pareto Canvas, Waitlist Probability & Anti-Bot Flow (`ParetoDecisionCanvas.tsx`, `probabilityModel.ts`, `AntiBotCanvasModal.tsx`):** Direct-manipulation budget/duration threshold sliders, Gigerenzer frequency-framing waitlist meters, senior lower-berth group allocation, and kinematic anti-bot checkout verification.
 
 ---
 
-## 6. Empirical Findings from Lab 7 Usability Testing
-During **Lab 7**, we evaluated 11 participants (P01 to P11) across two core tasks (Task 1: Train Search & Selection; Task 2: Passenger Details & Review) followed by an open exploration protocol.
-- **Quantitative Benchmark:**
-  - **Task 1 Completion Rate:** 100% (Mean Time: ~10.4s)
-  - **Task 2 Completion Rate:** 100% (Mean Time: ~13.5s)
-  - **Overall Mean SUS Score:** **74.09 / 100** (Grade B+ usability benchmark)
-- **Key Qualitative Feedback Collected:**
-  - *P01:* "Date selection is better with a dates dropdown instead of typing." (SUS: 72.5)
-  - *P02:* "There are too many things competing for my attention." (SUS: 75.0)
-  - *P03:* "I don't know which Delhi station I should select. Clarify which station is most relevant." (SUS: 85.0)
-  - *P05:* "The recommendation tells me what is best, but I don't completely understand the trade-off." (SUS: 70.0)
-  - *P06:* "I can't tell whether the availability is actually real. If it's dummy numbers mention it, otherwise show real time availability." (SUS: 70.0)
-  - *P07:* "The group planner doesn't really feel intelligent enough yet. Improve its algorithm." (SUS: 77.5)
-  - *P08:* "Fare doesn't feel complete enough for a group. Add price breakdown." (SUS: 67.5)
-  - *P09:* "What happens if my preferred train becomes unavailable suddenly?" (SUS: 60.0)
-  - *P10:* "Is it actually booking a real ticket? Why end at payment handout?" (SUS: 87.5)
-  - *P11:* "Light theme could be better." (SUS: 75.0)
+## Core System Features
+
+1. **Dual-Engine Express Intent Bar (Step 1):** Type, click a preset, or use voice input (e.g., *"JP to Delhi tomorrow, only 2A and 3A, depart 10 am to 10 pm"*) to configure route, date, quota, classes, and time window in one action and jump directly into the 3D visualizer.
+2. **3D/4D Tatkal Decision Space (Step 2):** Interactive Three.js WebGL canvas plotting every train-class option with real-time weight sliders, `+60s UPI` checkout survival forecasting, automatic **Plan A + Backup B** tethering across distinct trains, and `Focus Top 3` clutter reduction.
+3. **Station Quota-Jumping Explorer:** Exposes legal upstream General Quota pools (booking from origin **Ajmer Junction `AII`** with boarding at **Jaipur Junction `JP`** under IRCTC Commercial Circular No. 2018/TG-I/20/P) via an interactive route topology map and 3D vector arcs.
+4. **2D Pareto Canvas & Calibrated Waitlist Meters:** Coordinated 2D scatter view with draggable budget/duration ceiling lines and frequency-framed confirmation meters (*"8 out of 10 similar waitlists confirmed"*).
+5. **Group Berth Intelligence & Kinematic Anti-Bot Verification (Steps 3 & 4):** Automatically assigns lower-berth preferences for senior citizens (60+) and clusters family groups in the same coach, followed by a 1.5-second drag-docking human verification challenge and simulated PNR receipt.
 
 ---
 
-## 7. The 12 Meaningful Improvements Implemented in Lab 8
-To directly resolve the limitations surfaced in Lab 7, the Lab 8 build incorporates 12 structural improvements:
-1. **Controlled Journey-Date Selector:** Replaced free-text date typing with an interactive 14-day date chip strip and formatted dropdown selector (*Eliminates format errors; Nielsen #5*).
-2. **Cognitive Load Reduction & Progressive Disclosure:** Focused 4-step linear flow (`Journey` → `Select Train` → `Passengers` → `Review`). Deep-dive comparison tools and cluster guides open on demand (*Aesthetic and Minimalist Design; Nielsen #8*).
-3. **Delhi Station Cluster Intelligence:** "Delhi — All Stations" aggregates NDLS, DLI, DEE, DEC, and SSB. Dash explains the routing rationale behind station recommendations (*Match Between System and Real World; Nielsen #2*).
-4. **Explainable Smart Match 2.0:** Articulates explicit trade-offs (e.g. faster transit vs early morning departure vs confirmation odds) across controllable priorities (*User Control & Freedom; Nielsen #3*).
-5. **Live Railway Data Adapter & Honest Fallback:** Server-side proxy routes for real-time data with refresh timestamps. If external services fail, Dash clearly tags data as `DEMO FALLBACK` instead of faking live availability (*Visibility of System Status; Nielsen #1*).
-6. **Intelligent Group Constraint Engine:** Automatically flags senior citizens (age 60+) for lower berth allocation, keeps children (<12) paired with adults, and enables group-together rules (*Flexibility & Efficiency; Nielsen #7*).
-7. **In-Flow Passenger Customization & Per-Leg Overrides:** Fixes IRCTC's master-list defect by enabling direct inline preference editing and different class/berth preferences on different legs of a journey (*Major UX Innovation*).
-8. **Multi-Passenger Group Fare Transparency:** Complete itemization of per-passenger base fares, optional meals (₹120/meal), and total group costs with zero hidden charges.
-9. **Automated Fallback & Recovery Journeys:** Pre-computed contingency backup services (Shatabdi, Rajdhani, Double Decker) with departure buffers and journey-change alert intents (*Error Recovery; Nielsen #9*).
-10. **Ethical Prototype Boundary:** Clear labeling of the final checkout step as a **Simulated Secure Payment Handoff**, preventing confusion over whether actual tickets were purchased.
-11. **Information-Layered Train Cards:** Visual redesign prioritizing departure time, transit duration, price, and class chips, with collapsible secondary amenities.
-12. **Theme Switcher & WCAG AA Accessibility:** Dark/Light theme toggle, visible keyboard focus indicators (`focus-visible`), and verified 4.5:1 text contrast ratios.
+## Complete Setup & Replication Guide
 
----
+### 1. Prerequisites
+* **Node.js:** `v20.0.0` or higher (`v22 LTS` recommended)
+* **Package Manager:** `npm` (included with Node.js)
+* **Git:** To clone the repository
 
-## 8. Repository Structure & File Map
-```
-dash/
-├── app/
-│   ├── api/
-│   │   ├── availability/route.ts    # Upstream train class availability proxy
-│   │   ├── live/route.ts            # Secure RailRadar live status endpoint
-│   │   └── search/route.ts          # Multi-station cluster search proxy
-│   ├── globals.css                  # Theme tokens (dark/light), typography, focus states
-│   ├── layout.tsx                   # Root HTML shell, responsive viewport metadata
-│   └── page.tsx                     # Core 4-step interactive journey planner
-├── components/
-│   └── Stepper.tsx                  # Accessible visual step progress indicator
-├── docs/
-│   ├── documentation.pdf            # Comprehensive Lab 8 report & viva guide
-│   ├── DASH_FREE_DEPLOYMENT_GUIDE.md# Vercel deployment walkthrough
-│   └── DASH_Report.md               # Summary feature release notes
-├── lib/
-│   ├── data.ts                      # Station cluster definitions, fallback demo timetables
-│   ├── recommendation.ts            # Explainable Smart Match & trade-off ranking engine
-│   └── types.ts                     # TypeScript interfaces (Train, Passenger, Berth, Priority)
-├── public/                          # Optimized SVG/PNG assets and Dash branded icon
-├── .env.example                     # Template for railway API environment variables
-├── .env.local                       # Private developer API keys (git-ignored)
-├── package.json                     # Project manifest (Next.js 16, React 19, TypeScript 5.7)
-└── README.md                        # Project documentation & onboarding guide
-```
+### 2. Clone the Repository & Install Libraries
+Run the following commands in your terminal:
 
----
-
-## 9. Local Development Quickstart
-
-### Prerequisites
-- Node.js (version 18.18.0 or higher)
-- npm or pnpm
-
-### Installation & Run
 ```bash
-# Clone the repository
-git clone git@github.com:uttamshs/Railway-tatkal-ticket-booking-project.git
-
-# Navigate into project directory
-cd dash
-
-# Install dependencies
+git clone https://github.com/uttamshs/Railway-tatkal-ticket-booking-project.git
+cd Railway-tatkal-ticket-booking-project
 npm install
+```
 
-# Setup local environment variables
-cp .env.example .env.local
-# (Optional: Add RAILRADAR_API_KEY in .env.local if live running status is desired)
+This installs all required runtime and development packages defined in `package.json`:
+* `next` (`16.3.7`), `react` (`19.2.0`), `react-dom` (`19.2.0`)
+* `three` (`^0.186.1`) & `@types/three` (WebGL 3D/4D decision landscape)
+* `railkit` (`^6.0.1`) (Indian Railways live availability & schedule SDK)
+* `typescript` (`^5.7.0`) & `eslint` (`^9.0.0`)
 
-# Start development server
+### 3. Start the Application (Works Out-of-the-Box Without API Keys)
+You can run the full application immediately **without configuring any paid or external API keys**:
+
+```bash
 npm run dev
 ```
-Open **[http://localhost:3000](http://localhost:3000)** in your browser.
+
+Open **`http://localhost:3000`** in your browser.
+* **Zero-Config Resilience:** Every backend endpoint (`/api/search`, `/api/availability`, `/api/live`, `/api/ai-intent`, `/api/copilot`) is engineered with automatic multi-tier fallbacks. When external keys are omitted or rate-limited, the server seamlessly serves the verified Northern / North-Western Railway Jaipur–Delhi corridor schedule and uses the built-in deterministic NLP and heuristic engines with explicit data-provenance badges (`Live check` vs. `Timetable` vs. `Estimated`).
 
 ---
 
-## 10. Production Deployment (Vercel)
-To deploy Dash globally so that evaluators can access it without running `localhost`:
-1. Push your latest code to GitHub:
-   ```bash
-   git add .
-   git commit -m "feat: complete Lab 8 improvements, documentation, and styling"
-   git push origin main
-   ```
-2. Log in to [Vercel](https://vercel.com/) and import the `uttamshs/Railway-tatkal-ticket-booking-project` repository.
-3. Set the root directory to `dash`.
-4. In the **Environment Variables** configuration, set:
-   - `RAIL_API_BASE_URL`: `https://indian-railway-api.onrender.com`
-   - `RAILRADAR_BASE_URL`: `https://api.railradar.in`
-   - `RAILRADAR_API_KEY`: `(your private key)`
-5. Click **Deploy**. Vercel will output a live, secure HTTPS production URL (e.g., `https://dash-rail.vercel.app`).
+## Optional API Keys Configuration Guide (`.env.local`)
+
+To enable live upstream railway scraping and external LLM providers, copy `.env.example` to `.env.local` in the root folder:
+
+```bash
+cp .env.example .env.local
+```
+
+Below is the complete guide for each optional environment variable in `.env.local` and where to obtain the keys:
+
+```env
+# 1. Railway Schedule & Live Availability Providers
+RAIL_API_BASE_URL=https://indian-railway-api.onrender.com
+RAILRADAR_BASE_URL=https://api.railradar.in
+RAILRADAR_API_KEY=your_railradar_api_key_here
+RAILKIT_API_KEY=your_railkit_api_key_here
+
+# 2. Express Intent Bar Free-Tier LLM Accelerators (/api/ai-intent)
+GEMINI_API_KEY=
+GROQ_API_KEY=
+
+# 3. Dash AI Copilot OpenAI-Compatible Provider (/api/copilot)
+LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
+LLM_API_KEY=
+LLM_MODEL=gemini-1.5-flash
+COPILOT_RATE_LIMIT=20
+```
+
+### How to Obtain Each Key
+1. **`RAILKIT_API_KEY` (Used by `/api/availability`):**
+   * Powered by the [`railkit`](https://www.npmjs.com/package/railkit) npm SDK for live IRCTC seat availability and fare lookups. A default development key is pre-configured with automatic fallback to the verified corridor inventory if the 30-minute quota is exhausted.
+2. **`RAILRADAR_API_KEY` (Used by `/api/live` and `/api/search`):**
+   * Sign up at [railradar.in](https://railradar.in) to obtain a bearer token for live NTES train running status and delay tracking. If omitted, `/api/live` falls back to the verified Jaipur Junction platform and schedule tracker.
+3. **`GEMINI_API_KEY` or `GROQ_API_KEY` (Used by `/api/ai-intent`):**
+   * **Google Gemini (Free Tier):** Create a free key at [Google AI Studio](https://aistudio.google.com/app/apikey).
+   * **Groq (Free Tier):** Create a free key at [Groq Console](https://console.groq.com/keys).
+   * *Note:* The local deterministic parser in `lib/intent.ts` always executes first in `<5ms`; these keys are only called for complex free-form or Hinglish sentences.
+4. **`LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` (Used by `/api/copilot`):**
+   * Accepts any OpenAI-compatible chat completion endpoint (Google Gemini OpenAI compatibility endpoint, Groq, OpenAI, or Mistral). You can reuse your Google AI Studio key here with `LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/` and `LLM_MODEL=gemini-1.5-flash`. If omitted, `/api/copilot` automatically uses the corridor heuristic engine in `lib/aiCopilot.ts`.
 
 ---
 
-## 11. Prototype Boundary & Ethical Notice
-Dash is an academic Human-Computer Interaction research prototype developed for coursework evaluation under **AI511 (HCI)**. It does not perform actual financial debit transactions or issue live Indian Railways (IRCTC/CRIS) Passenger Name Records (PNR). The checkout flow concludes at an explicit **Simulated Secure Payment Handoff**.
+## Running Automated Tests & Production Build
+
+### Run the 140 Automated Unit Tests
+The repository includes two self-contained test suites covering the 3D/4D scoring engine, Pareto dominance, WCAG AA contrast ratios, 4D temporal depletion, quota-jump math, and NLP intent sanitization:
+
+```bash
+# Run 3D Scoring, Pareto, WCAG Contrast, 4D Temporal & Quota-Jump tests (32 assertions)
+npx tsx -e "import { runTests } from './components/TrainViz3D/lib/scoringEngine.test'; if (!runTests()) process.exit(1);"
+
+# Run Express Intent NLP Parser & LLM Trust-Boundary Sanitization tests (108 assertions)
+npx tsx -e "import { runTests } from './lib/intent.test'; if (!runTests()) process.exit(1);"
+```
+
+### Build & Run for Production
+```bash
+npm run build
+npm start
+```
+
+---
+
+## Repository Structure
+
+```text
+├── app/
+│   ├── api/
+│   │   ├── ai-intent/route.ts      # Dual-engine NLP intent endpoint (Gemini / Groq + sanitizer)
+│   │   ├── availability/route.ts   # 3-tier seat availability endpoint (RailKit + caching + corridor baseline)
+│   │   ├── copilot/route.ts        # Bounded-context LLM Copilot proxy with rate limiting & fallback
+│   │   ├── live/route.ts           # Live train running status & platform lookup
+│   │   └── search/route.ts         # Corridor train search with 15-min cache & upstream cooldown
+│   ├── globals.css                 # Light/Dark theme tokens & responsive styles
+│   ├── layout.tsx                  # Root layout & metadata
+│   └── page.tsx                    # 4-step booking state machine & coordinated views
+├── components/
+│   ├── TrainViz3D/                 # 3D/4D WebGL Tatkal Decision Landscape (Three.js Scene, HUD, lib)
+│   ├── AntiBotCanvasModal.tsx      # Kinematic drag-docking verification & concurrency queue
+│   ├── DashAICopilot.tsx           # Conversational assistant drawer with executable UI actions
+│   ├── ExpressIntentBar.tsx        # Natural-language & voice intent capture bar
+│   ├── ParetoDecisionCanvas.tsx    # 2D SVG Pareto frontier scatter plot with budget/duration sliders
+│   ├── QuotaJumpingModal.tsx       # Ajmer (AII) -> Jaipur (JP) route topology & quota-jump explorer
+│   └── Stepper.tsx                 # Progress stepper component
+├── lib/
+│   ├── aiCopilot.ts                # Deterministic corridor trade-off & intent rule engine
+│   ├── copilotPrompt.ts            # Anti-hallucination system prompt for /api/copilot
+│   ├── data.ts                     # Jaipur <-> Delhi corridor timetable & station clusters
+│   ├── intent.ts                   # Instant NLP parser, sanitizer & 3D filter translator
+│   ├── intent.test.ts              # 108 unit tests for NLP parsing & security boundaries
+│   ├── probabilityModel.ts         # Waitlist confirmation estimator & frequency framing
+│   ├── quotaJumping.ts             # Upstream origin station quota-jumping rules
+│   ├── recommendation.ts           # Multi-criteria Smart Match ranking engine
+│   └── types.ts                    # Shared TypeScript interfaces
+└── docs/
+    ├── Dash_EST_Final_Presentation.pdf   # 5-Slide Final Presentation Deck (PDF)
+    ├── Dash_EST_Final_Presentation.pptx  # 5-Slide Final Presentation Deck (Editable PowerPoint)
+    ├── Lab 9 Validation Summary Report.pdf
+    └── DASH_Report.md
+```
+
+---
+
+## Academic Prototype Disclaimer
+Dash is an academic research prototype developed for **AI511 (Human-Computer Interaction & Visualization)** at **IIT Ropar**, not an official commercial railway reservation service. Fallback corridor availability figures are explicitly badged as timetable/estimated baselines when live APIs are rate-limited, and the Step 4 payment step is a simulated checkout handoff that does not process real financial transactions or issue official IRCTC tickets.
