@@ -25,7 +25,7 @@ const COPY: Record<DataBasis, { text: string; color: string; title: string }> = 
 export function BasisBadge({ basis }: { basis: DataBasis }) {
   const c = COPY[basis];
   return (
-    <span title={c.title} style={{ ...pill, color: c.color, borderColor: c.color }}>
+    <span title={c.title} style={{ ...pill, color: c.color, border: `1px solid ${c.color}` }}>
       <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: "50%", background: c.color }} />
       {c.text}
     </span>

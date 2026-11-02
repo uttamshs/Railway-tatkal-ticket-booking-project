@@ -3,11 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import { ChatMessage, generateCopilotResponse } from "../lib/aiCopilot";
 import { BookingIntent } from "../lib/intent";
-import { Train } from "../lib/types";
+import { CopilotRequest, CopilotResponse, Priority, Train } from "../lib/types";
 
 interface Props {
   trains: Train[];
   selectedTrain: Train | null;
+  date?: string;
+  quota?: string;
+  priority?: Priority;
+  passengerAges?: number[];
+  liveAvailability?: Record<string, string>;
   onSelectTrain: (train: Train) => void;
   onOpenQuotaModal: (train: Train) => void;
   onSwitchView: (view: "canvas" | "list" | "3d" | "dual" | "tatkal3d") => void;
@@ -95,6 +100,11 @@ function renderFormattedMessage(text: string) {
 export function DashAICopilot({
   trains,
   selectedTrain,
+  date = new Date().toISOString().slice(0, 10),
+  quota = "Tatkal",
+  priority = "balanced",
+  passengerAges = [25],
+  liveAvailability = {},
   onSelectTrain,
   onOpenQuotaModal,
   onSwitchView,
@@ -137,9 +147,9 @@ export function DashAICopilot({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen]);
 
-  const handleSend = (textToSend?: string) => {
-    const query = textToSend || input;
-    if (!query.trim()) return;
+  const handleSend = async (textToSend?: string) => {
+    const query = (textToSend || input).trim();
+    if (!query || isTyping) return;
 
     const userMsg: ChatMessage = {
       id: `u-${Date.now()}`,
@@ -152,18 +162,93 @@ export function DashAICopilot({
     setInput("");
     setIsTyping(true);
 
-    setTimeout(() => {
-      const resp = generateCopilotResponse(query, trains, selectedTrain);
-      const aiMsg: ChatMessage = {
+    const localResp = generateCopilotResponse(query, trains, selectedTrain);
+    // If local intent parser extracted a direct 3D filter command, respond immediately with the 3D launch action
+    if (localResp.action?.type === "apply_intent") {
+      setTimeout(() => {
+        setMessages(prev => [
+          ...prev,
+          {
+            id: `ai-${Date.now()}`,
+            sender: "assistant",
+            text: localResp.text,
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            action: localResp.action
+          }
+        ]);
+        setIsTyping(false);
+      }, 350);
+      return;
+    }
+
+    try {
+      const reqPayload: CopilotRequest = {
+        message: query,
+        history: messages.slice(-8).map(m => ({ sender: m.sender, text: m.text })),
+        date,
+        quota,
+        priority,
+        passengerAges,
+        selectedTrainId: selectedTrain?.id || null,
+        trains: trains.map(train => ({
+          id: train.id,
+          number: train.number,
+          name: train.name,
+          fromCode: train.fromCode,
+          toCode: train.toCode,
+          departure: train.departure,
+          arrival: train.arrival,
+          duration: train.duration,
+          fare: train.fare,
+          classes: train.classes.map(code => ({
+            code,
+            status: liveAvailability[`${train.id}:${code}`] || train.classAvailability.find(item => item.code === code)?.status || "Available",
+            source: liveAvailability[`${train.id}:${code}`] ? "live" : "corridor",
+            checkedAt: null
+          }))
+        }))
+      };
+
+      const res = await fetch("/api/copilot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(reqPayload),
+        cache: "no-store"
+      });
+      if (!res.ok) throw new Error("fallback");
+      const data = (await res.json()) as CopilotResponse;
+
+      if (data.source === "llm" && data.answer) {
+        setMessages(prev => [
+          ...prev,
+          {
+            id: `ai-${Date.now()}`,
+            sender: "assistant",
+            text: data.answer,
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            action: data.action
+              ? { type: data.action.type, payload: data.action.value, label: data.action.label }
+              : localResp.action
+          }
+        ]);
+        setIsTyping(false);
+        return;
+      }
+    } catch {
+      // Fall through to deterministic heuristic engine
+    }
+
+    setMessages(prev => [
+      ...prev,
+      {
         id: `ai-${Date.now()}`,
         sender: "assistant",
-        text: resp.text,
+        text: localResp.text,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        action: resp.action
-      };
-      setMessages(prev => [...prev, aiMsg]);
-      setIsTyping(false);
-    }, 550);
+        action: localResp.action
+      }
+    ]);
+    setIsTyping(false);
   };
 
   const handleAction = (action?: ChatMessage["action"]) => {

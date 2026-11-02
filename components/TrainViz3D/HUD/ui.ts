@@ -54,7 +54,7 @@ export const btnBase: CSSProperties = {
 export const btnActive: CSSProperties = {
   background: "var(--viz-accent)",
   color: "var(--viz-on-accent)",
-  borderColor: "var(--viz-accent)",
+  border: "1px solid var(--viz-accent)",
 };
 
 export const btnPrimary: CSSProperties = {

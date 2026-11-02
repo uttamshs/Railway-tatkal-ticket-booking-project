@@ -161,11 +161,12 @@ export async function GET(req: Request) {
 
       let res = await getAvailability(train, from, to, dateDDMM, cls, quota);
 
-      if (res && !res.success && /limit exceeded|quota/i.test(res.error || "")) {
+      if (res && !res.success && /limit|quota|unauthorized|invalid|429|401|403|timeout|fetch/i.test(res.error || "")) {
         railKitQuotaExhaustedUntil = now + 30 * 60 * 1000;
       } else if (!res?.success && quota === "TQ" && (res?.error?.includes("Tatkal") || res?.error?.includes("ARP"))) {
         const gnRes = await getAvailability(train, from, to, dateDDMM, cls, "GN");
         if (gnRes?.success) res = gnRes;
+        else railKitQuotaExhaustedUntil = now + 5 * 60 * 1000;
       }
 
       if (res && res.success && res.data) {
@@ -189,7 +190,7 @@ export async function GET(req: Request) {
         return NextResponse.json(payload);
       }
     } catch {
-      // Fall through to secondary / corridor baseline
+      railKitQuotaExhaustedUntil = now + 5 * 60 * 1000;
     }
   }
 

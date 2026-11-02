@@ -604,7 +604,10 @@ export default function Home() {
                       key={train.id}
                       onMouseEnter={() => setHoveredTrainId(train.id)}
                       onMouseLeave={() => setHoveredTrainId(null)}
-                      style={isHoverSynced ? { borderColor: "var(--accent)", boxShadow: "0 0 15px rgba(30, 64, 175, 0.2)" } : undefined}
+                      style={{
+                        border: isHoverSynced ? "1px solid var(--accent)" : "1px solid var(--line)",
+                        boxShadow: isHoverSynced ? "0 0 15px rgba(30, 64, 175, 0.2)" : undefined,
+                      }}
                     >
                       <div className="train-main">
                         <div className="train-heading">
@@ -1390,6 +1393,10 @@ export default function Home() {
       <DashAICopilot
         trains={filtered}
         selectedTrain={selected}
+        date={date}
+        quota={quota}
+        priority={priority}
+        passengerAges={selectedPassengers.map((p) => p.age)}
         onSelectTrain={(t) => {
           setSelected(t);
           setSelectedClass(t.classes[0] || "3A");

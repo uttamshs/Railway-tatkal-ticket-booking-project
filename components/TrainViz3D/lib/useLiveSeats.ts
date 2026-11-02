@@ -45,6 +45,7 @@ export function useLiveSeats(journeyDate: string | undefined): UseLiveSeats {
   const activeRef = useRef(0);
   const aliveRef = useRef(true);
   const controllersRef = useRef<Set<AbortController>>(new Set());
+  const pumpRef = useRef<() => void>(() => undefined);
   const dateRef = useRef(journeyDate);
 
   useEffect(() => {
@@ -99,7 +100,7 @@ export function useLiveSeats(journeyDate: string | undefined): UseLiveSeats {
           };
           if (aliveRef.current && dateRef.current === date) {
             seatsRef.current = { ...seatsRef.current, [key]: reading };
-            setSeats(seatsRef.current);
+            setSeats((current) => ({ ...current, [key]: reading }));
           }
         })
         .catch(() => {
@@ -112,12 +113,13 @@ export function useLiveSeats(journeyDate: string | undefined): UseLiveSeats {
           activeRef.current -= 1;
           if (aliveRef.current) {
             setPending(queueRef.current.length + activeRef.current);
-            pump();
+            pumpRef.current();
           }
         });
     }
     setPending(queueRef.current.length + activeRef.current);
   }, []);
+  pumpRef.current = pump;
 
   const request = useCallback(
     (reqs: SeatRequest[], force = false) => {

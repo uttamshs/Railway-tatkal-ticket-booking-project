@@ -53,7 +53,7 @@ const AC_CLASSES: TravelClass[] = ["1A", "2A", "3A", "CC", "EC"];
 const CLASS_DISPLAY_ORDER: TravelClass[] = ["1A", "2A", "3A", "CC", "EC", "SL"];
 export const DELHI_CODES = ["NDLS", "DLI", "DEE", "DEC", "SSB"] as const;
 
-// ───────────────────────────── date helpers ─────────────────────────────
+// --- date helpers ---
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -103,7 +103,7 @@ function applyDate(intent: BookingIntent, dt: Date | null, label: string, today:
   intent.date = toISODate(dt);
 }
 
-// ───────────────────────────── time helpers ─────────────────────────────
+// --- time helpers ---
 
 type Mer = "am" | "pm" | "h" | null;
 const normMer = (s?: string): Mer => {
@@ -186,7 +186,7 @@ function resolveSingle(m: RegExpExecArray): number | null {
   return toMinutes(+m[1], m[2] !== undefined ? +m[2] : 0, mer);
 }
 
-// ───────────────────────────── station helpers ─────────────────────────────
+// --- station helpers ---
 
 type Place = { kind: "jaipur" } | { kind: "delhi"; code: string } | { kind: "unknown"; name: string };
 
@@ -244,7 +244,7 @@ function applyRoute(intent: BookingIntent, origin: Place | null, dest: Place | n
   }
 }
 
-// ───────────────────────────── class helpers ─────────────────────────────
+// --- class helpers ---
 
 const CLASS_GUARD = String.raw`(?![a-z0-9]|\.[a-z])`;
 const CLASS_PATTERNS: { cls: TravelClass | "NONAC"; re: RegExp }[] = [
@@ -264,7 +264,7 @@ const NEGATION_BEFORE = new RegExp(
   "i"
 );
 
-// ───────────────────────────── the instant parser ─────────────────────────────
+// --- the instant parser ---
 
 const PLACE_RE = String.raw`[a-z][a-z.'-]*(?:\s+[a-z][a-z.'-]*){0,3}`;
 const ROUTE_FROM_TO = new RegExp(String.raw`\bfrom\s+(${PLACE_RE})\s+(?:to|->|→|towards)\s+(${PLACE_RE})`, "i");
@@ -514,7 +514,7 @@ export function parseBookingIntent(text: string, opts: ParseOptions = {}): Booki
   return intent;
 }
 
-// ───────────────────────────── summary / chips ─────────────────────────────
+// --- summary / chips ---
 
 export function understoodCount(i: BookingIntent): number {
   return [
@@ -570,7 +570,7 @@ export function toVizIntent(i: BookingIntent, source: "instant" | "ai", nonce: n
   };
 }
 
-// ───────────────────────────── LLM output hardening ─────────────────────────────
+// --- LLM output hardening ---
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 

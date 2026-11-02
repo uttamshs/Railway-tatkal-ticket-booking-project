@@ -135,7 +135,7 @@ export default function IntentStrip({
               className="tv3d-btn"
               data-active="true"
               onClick={a.onClick}
-              style={{ ...btnBase, background: "var(--viz-accent)", color: "var(--viz-on-accent)", borderColor: "var(--viz-accent)", minHeight: 28 }}
+              style={{ ...btnBase, background: "var(--viz-accent)", color: "var(--viz-on-accent)", border: "1px solid var(--viz-accent)", minHeight: 28 }}
             >
               {a.label} <span style={{ opacity: 0.85, fontVariantNumeric: "tabular-nums" }}>→ {a.gain} match{a.gain === 1 ? "" : "es"}</span>
             </button>

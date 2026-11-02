@@ -149,7 +149,7 @@ export function vizCssVars(theme: VizTheme): CSSProperties {
   return vars as CSSProperties;
 }
 
-// ─── Shared HUD style fragments (no more copy-pasted GLASS_STYLE objects) ─────
+// --- Shared HUD style fragments (no more copy-pasted GLASS_STYLE objects) ---
 
 export const glassPanel: CSSProperties = {
   background: "var(--viz-panel)",
@@ -176,7 +176,7 @@ export const panelTitle: CSSProperties = {
 
 export const FOCUS_RING = "2px solid var(--viz-accent)";
 
-// ─── Score → colour (one implementation shared by markers AND legend) ─────────
+// --- Score → colour (one implementation shared by markers AND legend) ---
 
 function hexToRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.slice(1), 16);
@@ -208,7 +208,7 @@ export function legendGradient(colorblind: boolean, theme: VizTheme): string {
   return `linear-gradient(to right, ${a}, ${b}, ${c})`;
 }
 
-// ─── WCAG contrast helpers (used by tests) ────────────────────────────────────
+// --- WCAG contrast helpers (used by tests) ---
 
 function channel(v: number): number {
   const s = v / 255;

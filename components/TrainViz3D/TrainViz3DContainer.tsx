@@ -92,11 +92,11 @@ export default function TrainViz3DContainer({
   className = "",
   style,
 }: TrainViz3DContainerProps) {
-  // ─── Data pipeline: real trains + real seat reads → base options ───────────
+  // --- Data pipeline: real trains + real seat reads → base options ---
   const { seats, pending, failed, request } = useLiveSeats(journeyDate);
   const { options: baseOptions, excluded } = useMemo(() => adaptTrains(trains, seats), [trains, seats]);
 
-  // ─── 2.1, 2.2, 2.3, 2.4 State ───────────────────────────────────────────────
+  // --- 2.1, 2.2, 2.3, 2.4 State ---
   const [elapsedSec, setElapsedSec] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [activeQuotaJumpIds, setActiveQuotaJumpIds] = useState<Set<string>>(() => new Set());
@@ -122,7 +122,7 @@ export default function TrainViz3DContainer({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const bounds = useMemo(() => rawBounds, [bKey]);
 
-  // ─── UI state ───────────────────────────────────────────────────────────────
+  // --- UI state ---
   const [weights, setWeights] = useState<ScoreWeights>(DEFAULT_WEIGHTS);
   const [filterOverride, setFilterOverride] = useState<FilterState | null>(null);
   // Express intent (home-page prompt bar): kept separate from `filterOverride` so that numeric limits the
@@ -146,7 +146,7 @@ export default function TrainViz3DContainer({
 
   const isNarrow = useMediaQuery("(max-width: 860px)");
 
-  // ─── Express intent: apply once per launch ──────────────────────────────────
+  // --- Express intent: apply once per launch ---
   useEffect(() => {
     if (!intent || appliedIntentNonce.current === intent.nonce) return;
     appliedIntentNonce.current = intent.nonce;
@@ -164,7 +164,7 @@ export default function TrainViz3DContainer({
     onClearIntent?.();
   }, [intentFilter, onClearIntent]);
 
-  // ─── Temporal simulation playback timer (Feature 2.1) ───────────────────────
+  // --- Temporal simulation playback timer (Feature 2.1) ---
   useEffect(() => {
     if (!isPlaying) return;
     const id = setInterval(() => {
@@ -189,7 +189,7 @@ export default function TrainViz3DContainer({
     });
   }, [elapsedSec]);
 
-  // ─── Scoring, Filtering & Real-Time Backup Pair Coordination (2.2) ──────────
+  // --- Scoring, Filtering & Real-Time Backup Pair Coordination (2.2) ---
   const allScored = useMemo(() => computeScores(options, weights), [options, weights]);
 
   const defaultFilter = useMemo<FilterState>(
@@ -218,7 +218,7 @@ export default function TrainViz3DContainer({
   const filteredScored = useMemo(() => filterOptions(allScored, filter), [allScored, filter]);
   const visibleIds = useMemo(() => new Set(filteredScored.map((o) => o.id)), [filteredScored]);
 
-  // ─── Express intent: truthful live summary + one-tap relaxations ────────────
+  // --- Express intent: truthful live summary + one-tap relaxations ---
   const timeConstrained = filter.departureAfter !== "00:00" || filter.departureBefore !== "23:59";
   const filterChips = useMemo(() => {
     const chips: string[] = [];
@@ -334,7 +334,7 @@ export default function TrainViz3DContainer({
     if (selectedId && !allScored.some((o) => o.id === selectedId)) setSelectedId(null);
   }, [allScored, selectedId]);
 
-  // ─── Live seat requests ─────────────────────────────────────────────────────
+  // --- Live seat requests ---
   const trainOf = useCallback(
     (o: TatkalOption): Train | undefined =>
       trains.find((t) => t.number === o.trainNumber && t.fromCode === o.fromCode && t.toCode === o.toCode),
@@ -348,6 +348,20 @@ export default function TrainViz3DContainer({
       }),
     [trainOf]
   );
+
+  const initialTatkalRequests = useMemo(() => {
+    const tatkalClasses = ["SL", "3A", "2A", "1A", "CC", "EC"] as const;
+    return trains.flatMap((train) => {
+      const advertised = new Set((train.classes ?? []).filter((cls) => tatkalClasses.includes(cls as typeof tatkalClasses[number])));
+      const classes = advertised.size > 0
+        ? tatkalClasses.filter((cls) => advertised.has(cls))
+        : tatkalClasses;
+      return classes.map((cls) => ({ train, cls }));
+    });
+  }, [trains]);
+  useEffect(() => {
+    request(initialTatkalRequests);
+  }, [initialTatkalRequests, journeyDate, request]);
 
   const prefetchedFor = useRef("");
   useEffect(() => {
@@ -366,7 +380,7 @@ export default function TrainViz3DContainer({
     [request, toRequests]
   );
 
-  // ─── Three.js objects (all owned here, all disposed here) ───────────────────
+  // --- Three.js objects (all owned here, all disposed here) ---
   const cameraRef = useRef<CameraController | null>(null);
   const lightingRef = useRef<LightingHandle | null>(null);
   const layerRef = useRef<TrainNodeLayer | null>(null);
@@ -455,7 +469,7 @@ export default function TrainViz3DContainer({
     layerRef.current?.update(delta);
   }, []);
 
-  // ─── Interaction ────────────────────────────────────────────────────────────
+  // --- Interaction ---
   const flyToOption = useCallback(
     (id: string) => {
       setSelectedId(id);
@@ -595,7 +609,7 @@ export default function TrainViz3DContainer({
     [planA, flyToOption]
   );
 
-  // ─── Derived presentation ───────────────────────────────────────────────────
+  // --- Derived presentation ---
   const route = useMemo(() => {
     if (trains.length === 0) return "";
     const dests = [...new Set(trains.map((t) => t.toCode))];

@@ -91,7 +91,7 @@ export default function TrainDetailDrawer({
           {option.trainNumber} · {option.trainType}
           <span style={pill}>{option.travelClass}</span>
           {option.paretoOptimal && (
-            <span style={{ ...pill, color: "var(--viz-pareto)", borderColor: "var(--viz-pareto)" }}>
+            <span style={{ ...pill, color: "var(--viz-pareto)", border: "1px solid var(--viz-pareto)" }}>
               <Icon name="diamond" size={10} /> Pareto-optimal
             </span>
           )}

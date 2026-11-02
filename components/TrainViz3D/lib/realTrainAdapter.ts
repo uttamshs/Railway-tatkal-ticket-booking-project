@@ -81,9 +81,10 @@ export function adaptTrains(trains: Train[], seats: SeatMap = {}): AdaptResult {
 
   for (const train of trains) {
     const label = `${train.number} ${train.name}`;
-    const classes = (train.classes ?? []).filter((c): c is TravelClass =>
+    const advertisedClasses = (train.classes ?? []).filter((c): c is TravelClass =>
       SUPPORTED_CLASSES.includes(c as TravelClass)
     );
+    const classes = advertisedClasses.length > 0 ? advertisedClasses : SUPPORTED_CLASSES;
     if (classes.length === 0) {
       excluded.push({ label, reason: "no supported classes listed" });
       continue;

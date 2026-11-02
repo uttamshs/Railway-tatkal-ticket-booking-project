@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useMemo, useCallback, useState } from "react"
 import { Train } from "../lib/types";
 import { estimateConfirmationProbability } from "../lib/probabilityModel";
 
-/* ═══════════════════════════════════════════════════════════════════════════
+/* ---
    ThreeDDecisionCanvas — Ultra-Premium Enterprise 3D Visualizer
    Features:
    • Green-to-Red spatial decision gradient field (better trains on greener side)
@@ -29,7 +29,7 @@ interface Props {
   theme?: "dark" | "light";
 }
 
-// ─── 3×3 Matrix Math ───────────────────────────────────────────────────────
+// --- 3×3 Matrix Math ---
 
 type Mat3 = [
   number, number, number,
@@ -102,7 +102,7 @@ function isParetoOptimal(
   );
 }
 
-// ─── Multi-Attribute Gradient Color Along Green-to-Red Continuum ──────────
+// --- Multi-Attribute Gradient Color Along Green-to-Red Continuum ---
 
 export function getDominanceColor(score: number): {
   base: string;
@@ -299,7 +299,7 @@ export function ThreeDDecisionCanvas({
     ctx.save();
     ctx.clearRect(0, 0, W, H);
 
-    // ── 1. ULTRA-PREMIUM ATMOSPHERE ──────────────────────────────────────────
+    // ── 1. ULTRA-PREMIUM ATMOSPHERE ---
     if (isDark) {
       // Obsidian cosmic void with subtle chromatic depth
       const bgGrad = ctx.createRadialGradient(cx, cy * 0.7, 40, cx, cy * 0.7, Math.max(W, H) * 0.95);
@@ -345,7 +345,7 @@ export function ThreeDDecisionCanvas({
     const textPrimary = isDark ? "#f8fafc" : "#0f172a";
     const textMuted = isDark ? "rgba(148, 163, 184, 0.8)" : "#64748b";
 
-    // ── 2. GREEN-TO-RED SPATIAL GRADIENT FIELD IN THE 3D DECISION VOLUME ─────
+    // ── 2. GREEN-TO-RED SPATIAL GRADIENT FIELD IN THE 3D DECISION VOLUME ---
     // Project the 4 corners of the decision space mid-plane (y = 0 or on floor)
     const optCorner = project(applyMat3(rot, [-1, -0.98, 1]), cx, cy, fov, zoom); // Green optimal
     const riskCorner = project(applyMat3(rot, [1, -0.98, -1]), cx, cy, fov, zoom); // Red risk
@@ -375,7 +375,7 @@ export function ThreeDDecisionCanvas({
     ctx.fillStyle = spaceGrad;
     ctx.fill();
 
-    // ── 3. 3D Coordinate Bounding Cage ───────────────────────────────────────
+    // ── 3. 3D Coordinate Bounding Cage ---
     const cageCorners: [number, number, number][] = [
       [-1, -1, -1], [1, -1, -1], [1, -1, 1], [-1, -1, 1], // Floor
       [-1,  1, -1], [1,  1, -1], [1,  1, 1], [-1,  1, 1], // Ceiling
@@ -401,7 +401,7 @@ export function ThreeDDecisionCanvas({
     }
     ctx.setLineDash([]);
 
-    // ── 4. Floor Grid Subdivisions ───────────────────────────────────────────
+    // ── 4. Floor Grid Subdivisions ---
     const steps = 6;
     for (let i = 0; i <= steps; i++) {
       const t = (i / steps) * 2 - 1;
@@ -420,7 +420,7 @@ export function ThreeDDecisionCanvas({
       ctx.beginPath(); ctx.moveTo(z0.sx, z0.sy); ctx.lineTo(z1.sx, z1.sy); ctx.stroke();
     }
 
-    // ── 5. Sector Annotations on the Decision Surface ────────────────────────
+    // ── 5. Sector Annotations on the Decision Surface ---
     // Green Optimal Sector Label
     ctx.save();
     ctx.font = "bold 10px Inter, system-ui";
@@ -441,7 +441,7 @@ export function ThreeDDecisionCanvas({
     ctx.fillText("(Longer · Low Probability · Cost)", riskCorner.sx, riskCorner.sy - 6);
     ctx.restore();
 
-    // ── 6. Numerical Scale Ticks on Coordinate Axes ──────────────────────────
+    // ── 6. Numerical Scale Ticks on Coordinate Axes ---
     // X Axis: Duration
     for (let i = 0; i <= steps; i++) {
       const t = (i / steps) * 2 - 1;
@@ -483,7 +483,7 @@ export function ThreeDDecisionCanvas({
       ctx.fillText(label, tick.sx - 8, tick.sy + 10);
     }
 
-    // ── 7. Primary 3D Axes with Direction Arrows & Titles ────────────────────
+    // ── 7. Primary 3D Axes with Direction Arrows & Titles ---
     const axes: [string, [number, number, number], [number, number, number], string][] = [
       ["⏱ Journey Duration →", [-1, -1, -1], [1.25, -1, -1], isDark ? "#38bdf8" : "#0284c7"],
       ["🎟 Confirmation Probability ↑", [-1, -1, -1], [-1, 1.25, -1], isDark ? "#34d399" : "#059669"],
@@ -521,7 +521,7 @@ export function ThreeDDecisionCanvas({
       ctx.fillText(title, pTo.sx + nx * 18, pTo.sy + ny * 18 + 4);
     }
 
-    // ── 8. Project & Depth-Sort Trains ───────────────────────────────────────
+    // ── 8. Project & Depth-Sort Trains ---
     const projected = points.map((p) => {
       const v = applyMat3(rot, [p.nx, p.ny, p.nz]);
       const proj = project(v, cx, cy, fov, zoom);
@@ -557,7 +557,7 @@ export function ThreeDDecisionCanvas({
       ctx.stroke();
     }
 
-    // ── 10. Interactive 3-Axis Laser Projections for Active Train ────────────
+    // ── 10. Interactive 3-Axis Laser Projections for Active Train ---
     const activePoint =
       projected.find((p) => p.id === hoveredTrainId) ||
       (selectedTrain ? projected.find((p) => p.id === selectedTrain.id) : null);
@@ -606,7 +606,7 @@ export function ThreeDDecisionCanvas({
       ctx.fillText(`₹${activePoint.rawFare}`, pZ.sx, pZ.sy - 10);
     }
 
-    // ── 11. Pareto Optimal Frontier Spline ───────────────────────────────────
+    // ── 11. Pareto Optimal Frontier Spline ---
     const paretoPoints = projected.filter((p) => p.pareto);
     if (paretoPoints.length > 1) {
       const sorted = [...paretoPoints].sort((a, b) => a.sx - b.sx);
@@ -625,7 +625,7 @@ export function ThreeDDecisionCanvas({
       ctx.setLineDash([]);
     }
 
-    // ── 12. Render Jewel-like 3D Points ──────────────────────────────────────
+    // ── 12. Render Jewel-like 3D Points ---
     for (const p of projected) {
       const col = getDominanceColor(p.score);
       const isHov = hoveredTrainId === p.id;
@@ -698,7 +698,7 @@ export function ThreeDDecisionCanvas({
       }
     }
 
-    // ── 13. Google Earth-Style Mini 3D Orientation Gimbal ───────────────────
+    // ── 13. Google Earth-Style Mini 3D Orientation Gimbal ---
     const gimbalX = W - 45;
     const gimbalY = 45;
     const gimbalR = 24;
@@ -742,7 +742,7 @@ export function ThreeDDecisionCanvas({
     }
     ctx.restore();
 
-    // ── 14. HUD Footer ───────────────────────────────────────────────────────
+    // ── 14. HUD Footer ---
     ctx.font = "11.5px Inter, system-ui";
     ctx.fillStyle = textMuted;
     ctx.textAlign = "left";

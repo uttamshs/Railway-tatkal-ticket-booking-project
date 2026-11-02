@@ -34,7 +34,7 @@ export function buildCoordinateCage(theme: VizTheme, bounds: VizBounds): THREE.G
   const sy = bounds.successTicks.map((v) => toWorld(v, bounds.successMin, bounds.successMax));
   const dz = bounds.durationTicks.map((v) => toWorld(v, bounds.durationMin, bounds.durationMax));
 
-  // ── Grid planes (far walls + floor) ─────────────────────────────────────
+  // ── Grid planes (far walls + floor) ---
   const floor: number[] = [];
   fx.forEach((x) => floor.push(x, LO, LO, x, LO, HI));
   dz.forEach((z) => floor.push(LO, LO, z, HI, LO, z));
@@ -50,12 +50,12 @@ export function buildCoordinateCage(theme: VizTheme, bounds: VizBounds): THREE.G
   sy.forEach((y) => leftWall.push(LO, y, LO, LO, y, HI));
   root.add(segments(leftWall, p.gridColor, 0.22));
 
-  // ── Axes on the near edges ──────────────────────────────────────────────
+  // ── Axes on the near edges ---
   root.add(segments([LO, LO, HI, HI, LO, HI], p.axisFare, 1)); // X: fare
   root.add(segments([LO, LO, HI, LO, HI, HI], p.axisSuccess, 1)); // Y: success
   root.add(segments([HI, LO, HI, HI, LO, LO], p.axisDuration, 1)); // Z: duration
 
-  // ── Tick labels ─────────────────────────────────────────────────────────
+  // ── Tick labels ---
   const hex = (n: number) => `#${n.toString(16).padStart(6, "0")}`;
   const tickStyle = { fontPx: 22, color: p.labelText, worldHeight: 0.07, bold: false, onTop: true } as const;
 
@@ -75,7 +75,7 @@ export function buildCoordinateCage(theme: VizTheme, bounds: VizBounds): THREE.G
     root.add(s);
   });
 
-  // ── Axis titles ─────────────────────────────────────────────────────────
+  // ── Axis titles ---
   const titleStyle = { fontPx: 26, worldHeight: 0.095, onTop: true } as const;
 
   const fareTitle = makeTextSprite("Fare (₹)  →", { ...titleStyle, color: hex(p.axisFare) });

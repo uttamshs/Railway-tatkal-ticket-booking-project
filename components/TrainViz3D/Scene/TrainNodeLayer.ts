@@ -178,7 +178,7 @@ export class TrainNodeLayer {
     scene.add(this.root);
   }
 
-  // ─── Data sync ────────────────────────────────────────────────────────────
+  // --- Data sync ---
 
   /** Reconciles markers with `options` (adds, removes and updates in place). */
   sync(options: ScoredOption[], bounds: VizBounds, style: NodeStyle): void {
@@ -208,7 +208,7 @@ export class TrainNodeLayer {
     this.view = view;
   }
 
-  // ─── Node construction ────────────────────────────────────────────────────
+  // --- Node construction ---
 
   private colorFor(opt: ScoredOption): THREE.Color {
     return new THREE.Color(scoreToHex(opt.compositeScore, this.style.colorblind, this.style.theme));
@@ -519,7 +519,7 @@ export class TrainNodeLayer {
     }
   }
 
-  // ─── Per-frame update ─────────────────────────────────────────────────────
+  // --- Per-frame update ---
 
   update(delta: number): void {
     this.time += delta;
@@ -653,7 +653,7 @@ export class TrainNodeLayer {
     }
   }
 
-  // ─── Picking & queries ────────────────────────────────────────────────────
+  // --- Picking & queries ---
 
   /** Returns the nearest interactive marker or Quota-Jump diamond under the ray. */
   pickResult(raycaster: THREE.Raycaster): PickResult {
@@ -687,7 +687,7 @@ export class TrainNodeLayer {
     return node ? node.targetPos.clone() : null;
   }
 
-  // ─── Disposal ─────────────────────────────────────────────────────────────
+  // --- Disposal ---
 
   private disposeNode(node: Node): void {
     node.sphereMat.dispose();

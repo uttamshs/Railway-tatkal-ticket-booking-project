@@ -14,11 +14,12 @@ export interface TatkalWindowState {
   msUntilOpen: number;
 }
 
-/** Parses "YYYY-MM-DD" as a LOCAL date (new Date("YYYY-MM-DD") would be UTC). */
-function parseLocalDate(iso: string): Date | null {
+/** Creates an instant for a wall-clock time in Asia/Kolkata (IST, UTC+05:30). */
+function istInstant(iso: string, hour: number, minute: number): Date | null {
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return null;
-  return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+  const utcMs = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), hour, minute, 0, 0);
+  return new Date(utcMs - 330 * 60 * 1000);
 }
 
 /**
@@ -35,17 +36,19 @@ export function getTatkalWindow(
   now: Date = new Date()
 ): TatkalWindowState | null {
   if (!journeyDate) return null;
-  const day = parseLocalDate(journeyDate);
-  if (!day) return null;
+  const dayMatch = journeyDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!dayMatch) return null;
+
+  const journeyDayUtc = Date.UTC(Number(dayMatch[1]), Number(dayMatch[2]) - 1, Number(dayMatch[3]), 12, 0, 0, 0);
+  const openingDay = new Date(journeyDayUtc);
+  openingDay.setUTCDate(openingDay.getUTCDate() - 1);
+  const openingIso = openingDay.toISOString().slice(0, 10);
 
   const [oh, om] = openTime.split(":").map(Number);
-  const opensAt = new Date(day);
-  opensAt.setDate(opensAt.getDate() - 1);
-  opensAt.setHours(oh, om, 0, 0);
-
+  const opensAt = istInstant(openingIso, oh, om);
   const [dh, dm] = departure.split(":").map(Number);
-  const departsAt = new Date(day);
-  departsAt.setHours(dh, dm, 0, 0);
+  const departsAt = istInstant(journeyDate, dh, dm);
+  if (!opensAt || !departsAt) return null;
 
   const t = now.getTime();
   if (t < opensAt.getTime()) {

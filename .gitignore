@@ -24,5 +24,6 @@ yarn-error.log*
 # Scratch & Temporary Generation Files
 AGENTS.md
 CLAUDE.md
+*.tsbuildinfo
 *.tmp
 docs/*.html

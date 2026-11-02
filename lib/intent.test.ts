@@ -27,7 +27,7 @@ export function runTests(): boolean {
   const parse = (t: string) => parseBookingIntent(t, { today: TODAY });
   const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
-  // ── The exact prompt from the product brief ──────────────────────────────
+  // ── The exact prompt from the product brief ---
   const brief = parse(
     "Hey, I wanna book a ticket from JP to Delhi, I prefer only 2A and 3A. It should be on 31st Oct, from 10 am to 10 pm time"
   );
@@ -39,7 +39,7 @@ export function runTests(): boolean {
   assert("brief: no invented quota / fare / priority", !brief.quota && brief.maxFare === undefined && !brief.emphasis, brief);
   assert("brief: meets the instant-sufficient threshold (no LLM latency)", understoodCount(brief) >= INSTANT_SUFFICIENT_FIELDS);
 
-  // ── Dates ────────────────────────────────────────────────────────────────
+  // ── Dates ---
   assert("tomorrow", parse("tomorrow").date === "2026-10-30");
   assert("today", parse("today").date === "2026-10-29");
   assert("day after tomorrow", parse("day after tomorrow").date === "2026-10-31");
@@ -63,7 +63,7 @@ export function runTests(): boolean {
   assert("first unselectable day (12 Nov) rejected", !parse("12 nov").date);
   assert("date inside '30 Oct 10 am' is not confused with a time", parse("30 Oct 10 am").date === "2026-10-30" && !parse("30 Oct 10 am").departureAfter);
 
-  // ── Classes ──────────────────────────────────────────────────────────────
+  // ── Classes ---
   assert("only 2A and 3A", same(parse("only 2A and 3A").classes, ["2A", "3A"]));
   assert("3rd AC → 3A", same(parse("3rd AC").classes, ["3A"]));
   assert("first ac → 1A", same(parse("first ac").classes, ["1A"]));
@@ -80,7 +80,7 @@ export function runTests(): boolean {
   assert("sentence-final '3A.' is still a class", same(parse("only 3A.").classes, ["3A"]));
   assert("naming every class = no filter", !parse("SL 3A 2A 1A CC EC").classes);
 
-  // ── Time windows ─────────────────────────────────────────────────────────
+  // ── Time windows ---
   const t1 = parse("after 6 pm");
   assert("after 6 pm → 18:00", t1.departureAfter === "18:00" && !t1.departureBefore, t1);
   const t2 = parse("before 9:30 am");
@@ -110,7 +110,7 @@ export function runTests(): boolean {
   const arr2 = parse("I want to arrive by evening");
   assert("arrive by evening → warning, no daypart filter", !arr2.departureAfter && arr2.warnings.length === 1, arr2);
 
-  // ── Fare / duration / odds / priority ────────────────────────────────────
+  // ── Fare / duration / odds / priority ---
   assert("under ₹1500", parse("under ₹1500").maxFare === 1500);
   assert("below Rs. 1,800", parse("below Rs. 1,800").maxFare === 1800);
   assert("budget of 2k", parse("budget of 2k").maxFare === 2000);
@@ -132,12 +132,12 @@ export function runTests(): boolean {
     rich
   );
 
-  // ── Quota ────────────────────────────────────────────────────────────────
+  // ── Quota ---
   assert("tatkal quota", parse("Tatkal 3A tomorrow").quota === "Tatkal");
   assert("no quota unless stated", !parse("3A tomorrow").quota);
   assert("senior citizen quota", parse("senior citizen quota").quota === "Senior Citizen");
 
-  // ── Stations ─────────────────────────────────────────────────────────────
+  // ── Stations ---
   assert("JP to NDLS", parse("JP to NDLS").to === "NDLS");
   assert("Jaipur to New Delhi", parse("Jaipur to New Delhi").to === "NDLS");
   assert("from Jaipur Junction to Delhi Cantt", parse("from Jaipur Junction to Delhi Cantt").to === "DEC");
@@ -156,7 +156,7 @@ export function runTests(): boolean {
   assert("bare 'Delhi' sets the destination", parse("delhi").to === "ALL_DELHI");
   assert("'book a ticket' alone does not create a fake place", parse("I want to book a ticket").warnings.length === 0);
 
-  // ── Robustness ───────────────────────────────────────────────────────────
+  // ── Robustness ---
   assert("empty string", understoodCount(parse("")) === 0 && parse("").warnings.length === 0);
   assert("gibberish", understoodCount(parse("asdf qwer zxcv")) === 0);
   assert("very long input does not throw", (() => { try { parse("a ".repeat(5000)); return true; } catch { return false; } })());
@@ -165,7 +165,7 @@ export function runTests(): boolean {
   for (let i = 0; i < 300; i++) parse("Hey, I wanna book a ticket from JP to Delhi, I prefer only 2A and 3A. It should be on 31st Oct, from 10 am to 10 pm time");
   assert("parser is fast (300 parses < 400 ms)", Date.now() - t0 < 400, Date.now() - t0);
 
-  // ── Examples shown in the UI must actually parse ─────────────────────────
+  // ── Examples shown in the UI must actually parse ---
   const ex1 = parse("JP to Delhi tomorrow, only 2A and 3A, depart 10 am to 10 pm");
   assert("example 1", ex1.to === "ALL_DELHI" && ex1.date === "2026-10-30" && same(ex1.classes, ["2A", "3A"]) && ex1.departureAfter === "10:00" && ex1.departureBefore === "22:00", ex1);
   const ex2 = parse("Cheapest sleeper to New Delhi day after tomorrow");
@@ -173,14 +173,14 @@ export function runTests(): boolean {
   const ex3 = parse("Fastest AC in the morning, under ₹1500, at least 70% chance");
   assert("example 3", ex3.emphasis === "duration" && ex3.maxFare === 1500 && ex3.minSuccess === 70 && ex3.departureAfter === "05:00", ex3);
 
-  // ── Chips ────────────────────────────────────────────────────────────────
+  // ── Chips ---
   const chips = describeIntent(brief).map((c) => c.label);
   assert("chips: route, date, classes, time", chips.length === 4 && chips[0].startsWith("JP →") && chips[2] === "2A · 3A" && chips[3] === "Departs 10:00–22:00", chips);
   assert("chips: warnings are flagged", describeIntent(ajmer).some((c) => c.warn));
   const viz = toVizIntent(brief, "instant", 7);
   assert("viz intent carries filters and only context chips", viz.nonce === 7 && viz.departureAfter === "10:00" && viz.context.every((c) => c.warn || ["route", "date", "quota", "emphasis"].includes(c.key)), viz);
 
-  // ── LLM output hardening ─────────────────────────────────────────────────
+  // ── LLM output hardening ---
   const opts = { today: TODAY };
   const clean = sanitizeLlmIntent(
     {
@@ -210,7 +210,7 @@ export function runTests(): boolean {
   assert("sanitize: all six classes = no filter", !sanitizeLlmIntent({ classes: ["SL", "3A", "2A", "1A", "CC", "EC"] }, opts).classes);
   assert("sanitize: inverted time window keeps only the lower bound", (() => { const r = sanitizeLlmIntent({ departureAfter: "20:00", departureBefore: "08:00" }, opts); return r.departureAfter === "20:00" && !r.departureBefore; })());
 
-  // ── Merge policy ─────────────────────────────────────────────────────────
+  // ── Merge policy ---
   const local: BookingIntent = { classes: ["2A"], departureAfter: "10:00", warnings: ["w1"] };
   const llm: BookingIntent = { classes: ["SL"], departureAfter: "06:00", departureBefore: "12:00", maxFare: 900, emphasis: "fare", date: "2026-10-31", warnings: ["w1", "w2"] };
   const merged = mergeIntents(local, llm);
