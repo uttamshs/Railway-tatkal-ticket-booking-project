@@ -10,7 +10,7 @@
 | Deliverable | Access Link | Format / Notes |
 | :--- | :--- | :--- |
 | **5-Slide Presentation Deck** | [**View Presentation Deck on Google Drive**](https://drive.google.com/file/d/1UQAANPy1jrTt_3t4kqAFTNuD98ozleab/view?usp=drive_link) | PDF (Also available in-repo at [`docs/Dash_EST_Final_Presentation.pdf`](./docs/Dash_EST_Final_Presentation.pdf) and [`docs/Dash_EST_Final_Presentation.pptx`](./docs/Dash_EST_Final_Presentation.pptx)) |
-| **5-Minute Video Walkthrough & Pitch** | [**Watch Video Walkthrough & Pitch on Google Drive**](https://drive.google.com/file/d/1NRPTJO7oJpVztQShGgwkzgOgscfGTAT4/view?usp=drive_link) | Part 1: 5-Slide Technical Walkthrough · Part 2: Live Application Demo & Pitch |
+| **5-Minute Video Walkthrough & Pitch** | [**Watch Video Walkthrough & Pitch on Google Drive**](https://drive.google.com/file/d/1lbnTPYJhUEykI-8X2UvYJ_gLTbuu4YjB/view) | Part 1: 5-Slide Technical Walkthrough · Part 2: Live Application Demo & Pitch |
 | **Lab 9 Validation Report** | [`docs/Lab 9 Validation Summary Report.pdf`](./docs/Lab%209%20Validation%20Summary%20Report.pdf) | Empirical usability, accessibility (Lighthouse 98/100), and SUS (87.5/100) evaluation |
 
 ---
